@@ -117,6 +117,84 @@ project-management/
   - UseCase 负责事务与业务规则编排
   - Domain 只放纯规则（状态机/不变量判断），不依赖 IO
 
+## Git Commit 规范
+
+### 语言
+- Commit message **必须使用英文**（包括标题和正文）
+
+### 格式（Conventional Commits）
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+#### 标题行 `<type>(<scope>): <subject>`
+- **必填**，不超过 72 个字符
+- `<type>` 必须为以下之一：
+
+| type | 含义 | 示例 |
+|------|------|------|
+| `feat` | 新功能 | `feat(project): add tag-based filtering` |
+| `fix` | Bug 修复 | `fix(assignment): prevent duplicate active assignments` |
+| `docs` | 文档变更 | `docs: update PRD with sync commands` |
+| `chore` | 构建/工具/依赖 | `chore: upgrade Mantine to v7.15` |
+| `refactor` | 重构（不改行为） | `refactor(infra): extract migration runner` |
+| `style` | 代码格式/UI 样式 | `style: unify gradient button colors` |
+| `test` | 测试 | `test(domain): add status machine edge cases` |
+| `perf` | 性能优化 | `perf(query): add index on projects.current_status` |
+| `ci` | CI/CD | `ci: add cargo test to GitHub Actions` |
+
+- `<scope>` 可选，使用模块名：`project`, `person`, `partner`, `assignment`, `sync`, `ui`, `infra`, `domain`, `export`
+- `<subject>` 使用祈使句、小写开头、不加句号
+  - Good: `add partner immutability check`
+  - Bad: `Added partner immutability check.`
+
+#### 正文 `<body>`
+- 可选，用空行与标题分隔
+- 说明 **What & Why**（不是 How）
+- 每行不超过 100 字符
+- 多项变更使用 `- ` 列表
+
+#### 页脚 `<footer>`
+- 可选
+- `Co-authored-by: Name <email>` — 协作者
+- `BREAKING CHANGE: <description>` — 破坏性变更
+
+### 示例
+
+**简单 commit**：
+```
+fix(project): return error when partner_id is modified after creation
+```
+
+**带正文的 commit**：
+```
+feat(sync): implement delta sync with S3
+
+- Add sync_metadata table with SQLite triggers for change tracking
+- Upload compressed deltas to S3 with vector clock metadata
+- Support both AWS S3 and Cloudflare R2 endpoints
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+```
+
+**破坏性变更**：
+```
+refactor(commands)!: rename export_json to export_json_string
+
+BREAKING CHANGE: frontend callers must update invoke command name
+from "export_json" to "export_json_string"
+```
+
+### 禁止事项
+- 禁止中文 commit message
+- 禁止无意义的 message（如 `fix`, `update`, `wip`）
+- 禁止 commit 包含密钥文件（`.env`, `credentials.json`）
+- 禁止单个 commit 混合不相关变更（一个 commit 只做一件事）
+
 ## 变更规则（重要）
 - 任何改变字段、状态机、错误码、命令契约，都必须同步更新 `docs/PRD.md`
 - 任何新增表/字段，都必须提供 migration，并更新 PRD 的数据模型章节
