@@ -1,6 +1,6 @@
 import { notifications } from '@mantine/notifications';
 
-export function showError(message: string, title = '错误') {
+export function showError(message: string, title = 'Error') {
   notifications.show({
     title,
     message,
@@ -9,7 +9,7 @@ export function showError(message: string, title = '错误') {
   });
 }
 
-export function showSuccess(message: string, title = '成功') {
+export function showSuccess(message: string, title = 'Success') {
   notifications.show({
     title,
     message,

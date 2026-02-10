@@ -1,17 +1,17 @@
 import countries from 'i18n-iso-countries';
-import zhLocale from 'i18n-iso-countries/langs/zh.json';
+import enLocale from 'i18n-iso-countries/langs/en.json';
 
-countries.registerLocale(zhLocale as countries.LocaleData);
+countries.registerLocale(enLocale as countries.LocaleData);
 
-/** 东亚 + 东南亚 ISO 3166-1 alpha-2，顺序：东亚优先，再东南亚 */
+/** East & Southeast Asia ISO 3166-1 alpha-2, order: East Asia first, then Southeast Asia */
 const EAST_AND_SOUTHEAST_ASIA_CODES = [
-  'CN', 'HK', 'MO', 'TW', 'JP', 'KR', 'KP', 'MN', // 东亚
-  'BN', 'KH', 'ID', 'LA', 'MY', 'MM', 'PH', 'SG', 'TH', 'TL', 'VN', // 东南亚
+  'CN', 'HK', 'MO', 'TW', 'JP', 'KR', 'KP', 'MN', // East Asia
+  'BN', 'KH', 'ID', 'LA', 'MY', 'MM', 'PH', 'SG', 'TH', 'TL', 'VN', // Southeast Asia
 ] as const;
 
-const names = countries.getNames('zh') as Record<string, string>;
+const names = countries.getNames('en') as Record<string, string>;
 
-/** 国家列表：仅东亚与东南亚，中文名来自 i18n-iso-countries */
+/** Country list: East & Southeast Asia only, English names from i18n-iso-countries */
 export const COUNTRIES: { code: string; name: string }[] = EAST_AND_SOUTHEAST_ASIA_CODES
   .filter((code) => names[code])
   .map((code) => ({ code, name: names[code]! }));
@@ -25,10 +25,10 @@ export const PROJECT_STATUSES = [
   'ARCHIVED',
 ] as const;
 
-/** 人员角色预制选项 */
+/** Person role presets — labels are i18n keys, resolved at render time via t() */
 export const PERSON_ROLES = [
-  { value: 'tester', label: '测试' },
-  { value: 'product_manager', label: '产品经理' },
-  { value: 'backend_developer', label: '后端开发' },
-  { value: 'frontend_developer', label: '前端开发' },
+  { value: 'tester', label: 'role.tester' },
+  { value: 'product_manager', label: 'role.product_manager' },
+  { value: 'backend_developer', label: 'role.backend_developer' },
+  { value: 'frontend_developer', label: 'role.frontend_developer' },
 ] as const;

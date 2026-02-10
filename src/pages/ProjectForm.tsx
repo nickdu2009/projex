@@ -4,6 +4,7 @@ import { IconArrowLeft, IconDeviceFloppy } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { projectApi } from '../api/projects';
 import { COUNTRIES } from '../constants/countries';
 import { showError, showSuccess } from '../utils/errorToast';
@@ -22,6 +23,7 @@ function formatDate(d: Date | null): string | undefined {
 }
 
 export function ProjectForm() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEdit = id && id !== 'new';
@@ -64,26 +66,26 @@ export function ProjectForm() {
       setTagsStr(p.tags?.length ? p.tags.join(', ') : '');
       setLoadProject(false);
     }).catch((e) => {
-      showError((e as { message?: string })?.message ?? '加载失败');
+      showError((e as { message?: string })?.message ?? t('common.failedToLoad'));
       setLoadProject(false);
     });
-  }, [id, isEdit]);
+  }, [id, isEdit, t]);
 
   const handleSubmit = useCallback(async () => {
     if (!name.trim()) {
-      showError('请填写项目名称');
+      showError(t('project.form.nameRequired'));
       return;
     }
     if (!countryCode.trim()) {
-      showError('请选择国家');
+      showError(t('project.form.countryRequired'));
       return;
     }
     if (!ownerPersonId) {
-      showError('请选择负责人');
+      showError(t('project.form.ownerRequired'));
       return;
     }
     if (!isEdit && !partnerId) {
-      showError('请选择合作方');
+      showError(t('project.form.partnerRequired'));
       return;
     }
     setLoading(true);
@@ -98,9 +100,9 @@ export function ProjectForm() {
           ownerPersonId,
           startDate: formatDate(startDate),
           dueDate: formatDate(dueDate),
-          tags: tagsStr.split(/[,，]/).map((t) => t.trim()).filter(Boolean),
+          tags: tagsStr.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean),
         });
-        showSuccess('已保存');
+        showSuccess(t('common.saved'));
         invalidateTags();
         navigate(`/projects/${id}`);
       } else {
@@ -113,35 +115,35 @@ export function ProjectForm() {
           priority,
           startDate: formatDate(startDate),
           dueDate: formatDate(dueDate),
-          tags: tagsStr.split(/[,，]/).map((t) => t.trim()).filter(Boolean),
+          tags: tagsStr.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean),
         });
-        showSuccess('已创建');
+        showSuccess(t('common.created'));
         invalidateTags();
         navigate(`/projects/${p.id}`);
       }
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? (isEdit ? '保存失败' : '创建失败'));
+      showError((e as { message?: string })?.message ?? (isEdit ? t('common.failedToSave') : t('common.failedToCreate')));
     } finally {
       setLoading(false);
     }
-  }, [id, isEdit, name, description, priority, countryCode, partnerId, ownerPersonId, startDate, dueDate, tagsStr, navigate]);
+  }, [id, isEdit, name, description, priority, countryCode, partnerId, ownerPersonId, startDate, dueDate, tagsStr, navigate, t, invalidateTags]);
 
-  if (loadProject) return <Text size="sm">加载中…</Text>;
+  if (loadProject) return <Text size="sm">{t('common.loading')}</Text>;
 
   return (
     <Stack gap="md" w="100%" maw={960} pb="xl" style={{ alignSelf: 'flex-start' }}>
       <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/projects')}>
-        返回列表
+        {t('common.backToList')}
       </Button>
       <Paper>
         <Stack gap="md">
-          <Title order={3}>{isEdit ? '编辑项目' : '新建项目'}</Title>
+          <Title order={3}>{isEdit ? t('project.form.editTitle') : t('project.form.newTitle')}</Title>
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing="md">
-        <TextInput label="名称" required value={name} onChange={(e) => setName(e.target.value)} placeholder="项目名称" />
-        <TextInput label="描述" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="选填" />
-        <NumberInput label="优先级 (1-5)" min={1} max={5} value={priority} onChange={(v) => setPriority(Number(v) || 3)} />
+        <TextInput label={t('project.form.name')} required value={name} onChange={(e) => setName(e.target.value)} placeholder={t('project.form.namePlaceholder')} />
+        <TextInput label={t('project.form.description')} value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('common.optional')} />
+        <NumberInput label={t('project.form.priority')} min={1} max={5} value={priority} onChange={(v) => setPriority(Number(v) || 3)} />
         <Select
-          label="国家"
+          label={t('project.form.country')}
           required
           data={COUNTRIES.map((c) => ({ value: c.code, label: `${c.code} ${c.name}` }))}
           value={countryCode}
@@ -149,18 +151,18 @@ export function ProjectForm() {
         />
         {!isEdit && (
           <Select
-            label="合作方"
+            label={t('project.form.partner')}
             required
             data={partnerOptions()}
             value={partnerId}
             onChange={setPartnerId}
             searchable
-            placeholder="选择合作方（创建后不可变更）"
+            placeholder={t('project.form.partnerPlaceholder')}
           />
         )}
-        {isEdit && <Text size="sm" c="dimmed" style={{ gridColumn: '1 / -1' }}>合作方创建后不可变更</Text>}
+        {isEdit && <Text size="sm" c="dimmed" style={{ gridColumn: '1 / -1' }}>{t('project.form.partnerImmutable')}</Text>}
         <Select
-          label="负责人"
+          label={t('project.form.owner')}
           required
           data={personOptions()}
           value={ownerPersonId}
@@ -168,23 +170,23 @@ export function ProjectForm() {
           searchable
         />
         <DatePickerInput
-          label="开始日期"
-          placeholder="选择日期"
+          label={t('project.form.startDate')}
+          placeholder={t('common.pickDate')}
           value={startDate}
           onChange={setStartDate}
           valueFormat="YYYY-MM-DD"
           clearable
         />
         <DatePickerInput
-          label="截止日期"
-          placeholder="选择日期"
+          label={t('project.form.dueDate')}
+          placeholder={t('common.pickDate')}
           value={dueDate}
           onChange={setDueDate}
           valueFormat="YYYY-MM-DD"
           clearable
         />
           </SimpleGrid>
-          <TextInput label="标签" value={tagsStr} onChange={(e) => setTagsStr(e.target.value)} placeholder="逗号分隔" />
+          <TextInput label={t('project.form.tags')} value={tagsStr} onChange={(e) => setTagsStr(e.target.value)} placeholder={t('project.form.tagsPlaceholder')} />
           <Button
             loading={loading}
             onClick={handleSubmit}
@@ -193,7 +195,7 @@ export function ProjectForm() {
             leftSection={<IconDeviceFloppy size={18} />}
             style={{ alignSelf: 'flex-start' }}
           >
-            {isEdit ? '保存' : '创建'}
+            {isEdit ? t('common.save') : t('common.create')}
           </Button>
         </Stack>
       </Paper>

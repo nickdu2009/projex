@@ -2,12 +2,14 @@ import { Badge, Button, Flex, Loader, Paper, Stack, Table, Text, Title } from '@
 import { IconArrowLeft, IconEdit } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { partnersApi, type PartnerDto, type PartnerProjectItem } from '../api/partners';
 import { showError, showSuccess } from '../utils/errorToast';
 import { getProjectStatusColor } from '../utils/statusColor';
 import { ConfirmModal } from '../components/ConfirmModal';
 
 export function PartnerDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [partner, setPartner] = useState<PartnerDto | null>(null);
@@ -27,11 +29,11 @@ export function PartnerDetail() {
       setPartner(p);
       setProjects(projs);
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? '加载失败');
+      showError((e as { message?: string })?.message ?? t('common.failedToLoad'));
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
     load();
@@ -42,32 +44,32 @@ export function PartnerDetail() {
     setDeactivating(true);
     try {
       await partnersApi.deactivate(id);
-      showSuccess('已停用');
+      showSuccess(t('partner.detail.deactivated'));
       setConfirmOpen(false);
       load();
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? '停用失败');
+      showError((e as { message?: string })?.message ?? t('partner.detail.deactivateFailed'));
     } finally {
       setDeactivating(false);
     }
   };
 
-  if (!id) return <Text>缺少合作方 ID</Text>;
+  if (!id) return <Text>{t('partner.detail.missingId')}</Text>;
   if (loading || !partner) return <Loader size="sm" />;
 
   return (
     <Stack gap="md" w="100%" pb="xl" style={{ minWidth: 0 }}>
       <Flex wrap="wrap" gap="xs" justify="space-between" align="center">
         <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/partners')}>
-          返回列表
+          {t('common.backToList')}
         </Button>
         <Flex gap="xs">
           <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => navigate(`/partners/${id}/edit`)}>
-            编辑
+            {t('common.edit')}
           </Button>
           {partner.is_active && (
             <Button variant="light" color="red" onClick={() => setConfirmOpen(true)}>
-              停用
+              {t('common.deactivate')}
             </Button>
           )}
         </Flex>
@@ -88,7 +90,7 @@ export function PartnerDetail() {
               variant="filled"
               style={{ backgroundColor: 'rgba(255,255,255,0.25)' }}
             >
-              {partner.is_active ? '启用' : '停用'}
+              {partner.is_active ? t('common.active') : t('common.inactive')}
             </Badge>
           </Flex>
           <Text size="sm" style={{ color: 'rgba(255,255,255,0.9)' }}>{partner.note || '—'}</Text>
@@ -96,17 +98,17 @@ export function PartnerDetail() {
       </Paper>
 
       <Paper>
-        <Title order={5} mb="xs">关联项目</Title>
+        <Title order={5} mb="xs">{t('partner.detail.projects')}</Title>
         {projects.length === 0 ? (
-          <Text size="sm" c="dimmed">暂无</Text>
+          <Text size="sm" c="dimmed">{t('common.none')}</Text>
         ) : (
           <Table.ScrollContainer minWidth={300}>
             <Table>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>项目</Table.Th>
-                  <Table.Th>状态</Table.Th>
-                  <Table.Th>操作</Table.Th>
+                  <Table.Th>{t('partner.detail.colProject')}</Table.Th>
+                  <Table.Th>{t('partner.detail.colStatus')}</Table.Th>
+                  <Table.Th>{t('partner.detail.colActions')}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -134,9 +136,9 @@ export function PartnerDetail() {
         opened={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={handleDeactivate}
-        title="停用合作方"
-        message={`确定停用「${partner.name}」？停用后不可被新项目选择，但历史项目仍正常展示。`}
-        confirmLabel="停用"
+        title={t('partner.detail.deactivateTitle')}
+        message={t('partner.detail.deactivateMessage', { name: partner.name })}
+        confirmLabel={t('common.deactivate')}
         confirmColor="red"
         loading={deactivating}
       />

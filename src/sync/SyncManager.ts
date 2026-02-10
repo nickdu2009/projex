@@ -3,7 +3,7 @@
  * 负责协调前端与后端的同步操作
  */
 
-import { syncApi, type SyncConfigDto, type SyncStatusDto } from '../api/sync';
+import { syncApi, type SyncConfigDto } from '../api/sync';
 
 export interface SyncState {
   status: 'idle' | 'syncing' | 'error';

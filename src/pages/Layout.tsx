@@ -8,17 +8,19 @@ import {
 } from '@tabler/icons-react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SyncStatusBar } from '../components/SyncStatusBar';
 import { syncManager } from '../sync/SyncManager';
 
-const NAV = [
-  { to: '/projects', label: '项目', icon: IconFolder },
-  { to: '/people', label: '成员', icon: IconUsers },
-  { to: '/partners', label: '合作方', icon: IconBuildingCommunity },
-  { to: '/settings', label: '设置', icon: IconSettings },
+const NAV_ITEMS = [
+  { to: '/projects', labelKey: 'nav.projects', icon: IconFolder },
+  { to: '/people', labelKey: 'nav.people', icon: IconUsers },
+  { to: '/partners', labelKey: 'nav.partners', icon: IconBuildingCommunity },
+  { to: '/settings', labelKey: 'nav.settings', icon: IconSettings },
 ];
 
 export function Layout() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [syncEnabled, setSyncEnabled] = useState(false);
@@ -72,10 +74,10 @@ export function Layout() {
         </Group>
       </AppShell.Header>
       <AppShell.Navbar p="xs">
-        {NAV.map(({ to, label, icon: Icon }) => (
+        {NAV_ITEMS.map(({ to, labelKey, icon: Icon }) => (
           <NavLink
             key={to}
-            label={label}
+            label={t(labelKey)}
             leftSection={<Icon size={20} stroke={1.5} />}
             active={location.pathname === to || location.pathname.startsWith(to + '/')}
             onClick={() => navigate(to)}

@@ -16,6 +16,7 @@ import {
 import { IconFolder, IconPlus } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { projectApi, type ProjectListItem, type ProjectListReq } from '../api/projects';
 import { COUNTRIES, PROJECT_STATUSES } from '../constants/countries';
 import { showError } from '../utils/errorToast';
@@ -30,6 +31,7 @@ type SortBy = 'updatedAt' | 'priority' | 'dueDate';
 const PAGE_SIZE = 50;
 
 export function ProjectsList() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [items, setItems] = useState<ProjectListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -84,11 +86,11 @@ export function ProjectsList() {
       setItems(result.items);
       setTotal(result.total);
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? '加载失败');
+      showError((e as { message?: string })?.message ?? t('common.failedToLoad'));
     } finally {
       setLoading(false);
     }
-  }, [showArchived, page, sortBy, statusFilter, countryFilter, partnerFilter, ownerFilter, memberFilter, tagFilter]);
+  }, [showArchived, page, sortBy, statusFilter, countryFilter, partnerFilter, ownerFilter, memberFilter, tagFilter, t]);
 
   useEffect(() => {
     load();
@@ -104,23 +106,23 @@ export function ProjectsList() {
   return (
     <Stack gap="md" w="100%" pb="xl" style={{ minWidth: 0 }}>
       <Flex wrap="wrap" gap="sm" justify="space-between" align="center">
-        <Title order={3}>项目列表</Title>
+        <Title order={3}>{t('project.list.title')}</Title>
         <Button
           variant="gradient"
           gradient={{ from: 'indigo', to: 'violet' }}
           leftSection={<IconPlus size={18} />}
           onClick={() => navigate('/projects/new')}
         >
-          新建项目
+          {t('project.list.new')}
         </Button>
       </Flex>
 
       <Paper>
         <Stack gap="xs">
-          <Text size="xs" c="dimmed" fw={500}>筛选条件</Text>
+          <Text size="xs" c="dimmed" fw={500}>{t('project.list.filters')}</Text>
           <Flex wrap="wrap" gap="xs" align="flex-end">
             <Select
-              placeholder="状态"
+              placeholder={t('project.list.statusPlaceholder')}
               clearable
               data={PROJECT_STATUSES.map((s) => ({ value: s, label: s }))}
               value={statusFilter}
@@ -128,7 +130,7 @@ export function ProjectsList() {
               style={{ minWidth: 120, flex: '1 1 120px' }}
             />
             <Select
-              placeholder="国家"
+              placeholder={t('project.list.countryPlaceholder')}
               clearable
               data={COUNTRIES.map((c) => ({ value: c.code, label: `${c.code} ${c.name}` }))}
               value={countryFilter}
@@ -136,7 +138,7 @@ export function ProjectsList() {
               style={{ minWidth: 120, flex: '1 1 140px' }}
             />
             <Select
-              placeholder="合作方"
+              placeholder={t('project.list.partnerPlaceholder')}
               clearable
               data={partnerOptions()}
               value={partnerFilter}
@@ -145,7 +147,7 @@ export function ProjectsList() {
               style={{ minWidth: 120, flex: '1 1 140px' }}
             />
             <Select
-              placeholder="负责人"
+              placeholder={t('project.list.ownerPlaceholder')}
               clearable
               data={personOptions()}
               value={ownerFilter}
@@ -154,7 +156,7 @@ export function ProjectsList() {
               style={{ minWidth: 120, flex: '1 1 140px' }}
             />
             <Select
-              placeholder="参与成员"
+              placeholder={t('project.list.memberPlaceholder')}
               clearable
               data={personOptions()}
               value={memberFilter}
@@ -163,9 +165,9 @@ export function ProjectsList() {
               style={{ minWidth: 120, flex: '1 1 140px' }}
             />
             <MultiSelect
-              placeholder="标签"
+              placeholder={t('project.list.tagPlaceholder')}
               clearable
-              data={allTags.map((t) => ({ value: t, label: t }))}
+              data={allTags.map((tag) => ({ value: tag, label: tag }))}
               value={tagFilter}
               onChange={setTagFilter}
               searchable
@@ -176,17 +178,17 @@ export function ProjectsList() {
               size="xs"
               onClick={() => setShowArchived((v) => !v)}
             >
-              {showArchived ? '隐藏已归档' : '显示已归档'}
+              {showArchived ? t('project.list.hideArchived') : t('project.list.showArchived')}
             </Button>
           </Flex>
           <Flex gap="xs" align="center">
-            <Text size="xs" c="dimmed">排序方式：</Text>
+            <Text size="xs" c="dimmed">{t('project.list.sortBy')}</Text>
             <Select
               size="xs"
               data={[
-                { value: 'updatedAt', label: '更新时间（最新优先）' },
-                { value: 'priority', label: '优先级（高优先级在前）' },
-                { value: 'dueDate', label: '截止日期（最近优先）' },
+                { value: 'updatedAt', label: t('project.list.sortUpdated') },
+                { value: 'priority', label: t('project.list.sortPriority') },
+                { value: 'dueDate', label: t('project.list.sortDueDate') },
               ]}
               value={sortBy}
               onChange={(v) => v && setSortBy(v as SortBy)}
@@ -204,9 +206,9 @@ export function ProjectsList() {
         ) : items.length === 0 ? (
           <EmptyState
             icon={IconFolder}
-            title="暂无项目"
-            description={total === 0 && !statusFilter && !countryFilter && !partnerFilter && !ownerFilter && !memberFilter && tagFilter.length === 0 ? "还没有创建任何项目。请先创建合作方和成员，然后新建项目。" : "没有符合筛选条件的项目"}
-            actionLabel={total === 0 && !statusFilter ? "新建项目" : undefined}
+            title={t('project.list.emptyTitle')}
+            description={total === 0 && !statusFilter && !countryFilter && !partnerFilter && !ownerFilter && !memberFilter && tagFilter.length === 0 ? t('project.list.emptyDescAll') : t('project.list.emptyDescFiltered')}
+            actionLabel={total === 0 && !statusFilter ? t('project.list.new') : undefined}
             onAction={total === 0 && !statusFilter ? () => navigate('/projects/new') : undefined}
           />
         ) : (
@@ -215,14 +217,14 @@ export function ProjectsList() {
               <Table striped highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>名称</Table.Th>
-                    <Table.Th>状态</Table.Th>
-                    <Table.Th>国家</Table.Th>
-                    <Table.Th>合作方</Table.Th>
-                    <Table.Th>负责人</Table.Th>
-                    <Table.Th>截止日</Table.Th>
-                    <Table.Th>标签</Table.Th>
-                    <Table.Th>操作</Table.Th>
+                    <Table.Th>{t('project.list.colName')}</Table.Th>
+                    <Table.Th>{t('project.list.colStatus')}</Table.Th>
+                    <Table.Th>{t('project.list.colCountry')}</Table.Th>
+                    <Table.Th>{t('project.list.colPartner')}</Table.Th>
+                    <Table.Th>{t('project.list.colOwner')}</Table.Th>
+                    <Table.Th>{t('project.list.colDueDate')}</Table.Th>
+                    <Table.Th>{t('project.list.colTags')}</Table.Th>
+                    <Table.Th>{t('project.list.colActions')}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -245,7 +247,7 @@ export function ProjectsList() {
                       </Table.Td>
                       <Table.Td>
                         <Button size="xs" variant="light" onClick={() => navigate(`/projects/${p.id}`)}>
-                          详情
+                          {t('common.view')}
                         </Button>
                       </Table.Td>
                     </Table.Tr>
@@ -256,7 +258,7 @@ export function ProjectsList() {
             {totalPages > 1 && (
               <Group justify="space-between" mt="md" px="sm">
                 <Text size="sm" c="dimmed">
-                  共 {total} 个项目
+                  {t('project.list.total', { count: total })}
                 </Text>
                 <Pagination
                   value={page}
@@ -268,7 +270,7 @@ export function ProjectsList() {
             )}
             {totalPages <= 1 && total > 0 && (
               <Text size="sm" c="dimmed" ta="right" mt="xs" px="sm">
-                共 {total} 个项目
+                {t('project.list.total', { count: total })}
               </Text>
             )}
           </>

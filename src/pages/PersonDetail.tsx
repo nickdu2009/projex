@@ -2,6 +2,7 @@ import { Badge, Button, Flex, Loader, Paper, Stack, Table, Text, Title } from '@
 import { IconArrowLeft, IconEdit } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { peopleApi, type PersonDto, type PersonProjectItem } from '../api/people';
 import { showError, showSuccess } from '../utils/errorToast';
 import { getRoleLabel } from '../utils/roleLabel';
@@ -9,6 +10,7 @@ import { getProjectStatusColor } from '../utils/statusColor';
 import { ConfirmModal } from '../components/ConfirmModal';
 
 export function PersonDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [person, setPerson] = useState<PersonDto | null>(null);
@@ -31,11 +33,11 @@ export function PersonDetail() {
       setCurrentProjects(current);
       setAllProjects(all);
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? '加载失败');
+      showError((e as { message?: string })?.message ?? t('common.failedToLoad'));
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
     load();
@@ -46,32 +48,32 @@ export function PersonDetail() {
     setDeactivating(true);
     try {
       await peopleApi.deactivate(id);
-      showSuccess('已停用');
+      showSuccess(t('person.detail.deactivated'));
       setDeactivateModal(false);
       load();
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? '停用失败');
+      showError((e as { message?: string })?.message ?? t('person.detail.deactivateFailed'));
     } finally {
       setDeactivating(false);
     }
   };
 
-  if (!id) return <Text>缺少成员 ID</Text>;
+  if (!id) return <Text>{t('person.detail.missingId')}</Text>;
   if (loading || !person) return <Loader size="sm" />;
 
   return (
     <Stack gap="md" w="100%" pb="xl" style={{ minWidth: 0 }}>
       <Flex wrap="wrap" gap="xs" justify="space-between" align="center">
         <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/people')}>
-          返回列表
+          {t('common.backToList')}
         </Button>
         <Flex gap="xs">
           <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => navigate(`/people/${id}/edit`)}>
-            编辑
+            {t('common.edit')}
           </Button>
           {person.is_active && (
             <Button variant="light" color="red" onClick={() => setDeactivateModal(true)}>
-              停用
+              {t('common.deactivate')}
             </Button>
           )}
         </Flex>
@@ -92,7 +94,7 @@ export function PersonDetail() {
               variant="filled"
               style={{ backgroundColor: 'rgba(255,255,255,0.25)' }}
             >
-              {person.is_active ? '启用' : '停用'}
+              {person.is_active ? t('common.active') : t('common.inactive')}
             </Badge>
             {person.role && (
               <Badge
@@ -106,7 +108,7 @@ export function PersonDetail() {
           </Flex>
           {person.email && (
             <Text size="sm" style={{ color: 'rgba(255,255,255,0.9)' }}>
-              邮箱：{person.email}
+              {t('person.detail.email', { value: person.email })}
             </Text>
           )}
           <Text size="sm" style={{ color: 'rgba(255,255,255,0.9)' }}>{person.note || '—'}</Text>
@@ -114,17 +116,17 @@ export function PersonDetail() {
       </Paper>
 
       <Paper>
-        <Title order={5} mb="xs">当前参与项目</Title>
+        <Title order={5} mb="xs">{t('person.detail.currentProjects')}</Title>
         {currentProjects.length === 0 ? (
-          <Text size="sm" c="dimmed">暂无</Text>
+          <Text size="sm" c="dimmed">{t('common.none')}</Text>
         ) : (
           <Table.ScrollContainer minWidth={300}>
             <Table>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>项目</Table.Th>
-                  <Table.Th>状态</Table.Th>
-                  <Table.Th>操作</Table.Th>
+                  <Table.Th>{t('person.detail.colProject')}</Table.Th>
+                  <Table.Th>{t('person.detail.colStatus')}</Table.Th>
+                  <Table.Th>{t('person.detail.colActions')}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -150,17 +152,17 @@ export function PersonDetail() {
       </Paper>
 
       <Paper>
-        <Title order={5} mb="xs">参与过的项目</Title>
+        <Title order={5} mb="xs">{t('person.detail.projectHistory')}</Title>
         {allProjects.length === 0 ? (
-          <Text size="sm" c="dimmed">暂无</Text>
+          <Text size="sm" c="dimmed">{t('common.none')}</Text>
         ) : (
           <Table.ScrollContainer minWidth={400}>
             <Table>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>项目</Table.Th>
-                  <Table.Th>状态</Table.Th>
-                  <Table.Th>最近参与</Table.Th>
+                  <Table.Th>{t('person.detail.colProject')}</Table.Th>
+                  <Table.Th>{t('person.detail.colStatus')}</Table.Th>
+                  <Table.Th>{t('person.detail.colLastInvolved')}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -189,9 +191,9 @@ export function PersonDetail() {
         opened={deactivateModal}
         onClose={() => setDeactivateModal(false)}
         onConfirm={handleDeactivate}
-        title="停用成员"
-        message={`确定停用「${person.display_name}」？停用后该成员将无法被分配到新项目。`}
-        confirmLabel="停用"
+        title={t('person.detail.deactivateTitle')}
+        message={t('person.detail.deactivateMessage', { name: person.display_name })}
+        confirmLabel={t('common.deactivate')}
         loading={deactivating}
       />
     </Stack>

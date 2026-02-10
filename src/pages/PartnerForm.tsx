@@ -2,11 +2,13 @@ import { Button, Paper, SimpleGrid, Stack, Text, TextInput, Textarea, Title } fr
 import { IconArrowLeft, IconDeviceFloppy } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { partnersApi } from '../api/partners';
 import { showError, showSuccess } from '../utils/errorToast';
 import { usePartnerStore } from '../stores/usePartnerStore';
 
 export function PartnerForm() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEdit = id && id !== 'new';
@@ -26,49 +28,49 @@ export function PartnerForm() {
       setNote(p.note ?? '');
       setLoadPartner(false);
     }).catch((e) => {
-      showError((e as { message?: string })?.message ?? '加载失败');
+      showError((e as { message?: string })?.message ?? t('common.failedToLoad'));
       setLoadPartner(false);
     });
-  }, [id, isEdit]);
+  }, [id, isEdit, t]);
 
   const handleSubmit = useCallback(async () => {
     if (!name.trim()) {
-      showError('请填写合作方名称');
+      showError(t('partner.form.nameRequired'));
       return;
     }
     setLoading(true);
     try {
       if (isEdit && id) {
         await partnersApi.update({ id, name: name.trim(), note: note.trim() || undefined });
-        showSuccess('已保存');
+        showSuccess(t('common.saved'));
         invalidatePartners();
         navigate(`/partners/${id}`);
       } else {
         const p = await partnersApi.create({ name: name.trim(), note: note.trim() || undefined });
-        showSuccess('已创建');
+        showSuccess(t('common.created'));
         invalidatePartners();
         navigate(`/partners/${p.id}`);
       }
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? (isEdit ? '保存失败' : '创建失败'));
+      showError((e as { message?: string })?.message ?? (isEdit ? t('common.failedToSave') : t('common.failedToCreate')));
     } finally {
       setLoading(false);
     }
-  }, [id, isEdit, name, note, navigate]);
+  }, [id, isEdit, name, note, navigate, t, invalidatePartners]);
 
-  if (loadPartner) return <Text size="sm">加载中…</Text>;
+  if (loadPartner) return <Text size="sm">{t('common.loading')}</Text>;
 
   return (
     <Stack gap="md" w="100%" maw={640} pb="xl" style={{ alignSelf: 'flex-start' }}>
       <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/partners')}>
-        返回列表
+        {t('common.backToList')}
       </Button>
       <Paper>
         <Stack gap="md">
-          <Title order={3}>{isEdit ? '编辑合作方' : '新建合作方'}</Title>
+          <Title order={3}>{isEdit ? t('partner.form.editTitle') : t('partner.form.newTitle')}</Title>
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing="md">
-            <TextInput label="名称" required value={name} onChange={(e) => setName(e.target.value)} placeholder="合作方名称" />
-            <Textarea label="备注" value={note} onChange={(e) => setNote(e.target.value)} placeholder="选填" minRows={1} />
+            <TextInput label={t('partner.form.name')} required value={name} onChange={(e) => setName(e.target.value)} placeholder={t('partner.form.namePlaceholder')} />
+            <Textarea label={t('partner.form.note')} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('common.optional')} minRows={1} />
           </SimpleGrid>
           <Button
             loading={loading}
@@ -78,7 +80,7 @@ export function PartnerForm() {
             leftSection={<IconDeviceFloppy size={18} />}
             style={{ alignSelf: 'flex-start' }}
           >
-            {isEdit ? '保存' : '创建'}
+            {isEdit ? t('common.save') : t('common.create')}
           </Button>
         </Stack>
       </Paper>

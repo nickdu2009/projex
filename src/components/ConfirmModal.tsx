@@ -1,4 +1,5 @@
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
+import { useTranslation } from 'react-i18next';
 
 interface ConfirmModalProps {
   opened: boolean;
@@ -17,20 +18,21 @@ export function ConfirmModal({
   onConfirm,
   title,
   message,
-  confirmLabel = '确认',
+  confirmLabel,
   confirmColor = 'red',
   loading = false,
 }: ConfirmModalProps) {
+  const { t } = useTranslation();
   return (
     <Modal opened={opened} onClose={onClose} title={title} centered>
       <Stack>
         <Text size="sm">{message}</Text>
         <Group justify="flex-end">
           <Button variant="subtle" onClick={onClose} disabled={loading}>
-            取消
+            {t('common.cancel')}
           </Button>
           <Button color={confirmColor} onClick={onConfirm} loading={loading}>
-            {confirmLabel}
+            {confirmLabel ?? t('common.confirm')}
           </Button>
         </Group>
       </Stack>

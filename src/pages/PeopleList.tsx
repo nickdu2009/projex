@@ -2,12 +2,14 @@ import { Button, Flex, Loader, Paper, Stack, Table, Text, Title } from '@mantine
 import { IconPlus, IconUsers } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { peopleApi, type PersonDto } from '../api/people';
 import { showError } from '../utils/errorToast';
 import { getRoleLabel } from '../utils/roleLabel';
 import { EmptyState } from '../components/EmptyState';
 
 export function PeopleList() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [list, setList] = useState<PersonDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,11 +21,11 @@ export function PeopleList() {
       const data = await peopleApi.list(!showInactive);
       setList(data);
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? '加载失败');
+      showError((e as { message?: string })?.message ?? t('common.failedToLoad'));
     } finally {
       setLoading(false);
     }
-  }, [showInactive]);
+  }, [showInactive, t]);
 
   useEffect(() => {
     load();
@@ -32,20 +34,20 @@ export function PeopleList() {
   return (
     <Stack gap="md" w="100%" pb="xl" style={{ minWidth: 0 }}>
       <Flex wrap="wrap" gap="sm" justify="space-between" align="center">
-        <Title order={3}>成员列表</Title>
+        <Title order={3}>{t('person.list.title')}</Title>
         <Button
           variant="gradient"
           gradient={{ from: 'indigo', to: 'violet' }}
           leftSection={<IconPlus size={18} />}
           onClick={() => navigate('/people/new')}
         >
-          新建成员
+          {t('person.list.new')}
         </Button>
       </Flex>
 
       <Paper>
         <Button variant="subtle" size="xs" onClick={() => setShowInactive((v) => !v)}>
-          {showInactive ? '仅显示启用' : '显示已停用'}
+          {showInactive ? t('person.list.activeOnly') : t('person.list.showInactive')}
         </Button>
       </Paper>
 
@@ -57,9 +59,9 @@ export function PeopleList() {
         ) : list.length === 0 ? (
           <EmptyState
             icon={IconUsers}
-            title="暂无成员"
-            description="还没有添加任何团队成员。创建成员后可以将其分配到项目中。"
-            actionLabel="新建成员"
+            title={t('person.list.emptyTitle')}
+            description={t('person.list.emptyDesc')}
+            actionLabel={t('person.list.new')}
             onAction={() => navigate('/people/new')}
           />
         ) : (
@@ -67,12 +69,12 @@ export function PeopleList() {
             <Table>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>姓名</Table.Th>
-                  <Table.Th>邮箱</Table.Th>
-                  <Table.Th>角色</Table.Th>
-                  <Table.Th>备注</Table.Th>
-                  <Table.Th>状态</Table.Th>
-                  <Table.Th>操作</Table.Th>
+                  <Table.Th>{t('person.list.colName')}</Table.Th>
+                  <Table.Th>{t('person.list.colEmail')}</Table.Th>
+                  <Table.Th>{t('person.list.colRole')}</Table.Th>
+                  <Table.Th>{t('person.list.colNote')}</Table.Th>
+                  <Table.Th>{t('person.list.colStatus')}</Table.Th>
+                  <Table.Th>{t('person.list.colActions')}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -82,10 +84,10 @@ export function PeopleList() {
                     <Table.Td><Text size="sm" c="dimmed">{p.email || '—'}</Text></Table.Td>
                     <Table.Td><Text size="sm">{p.role ? getRoleLabel(p.role) : '—'}</Text></Table.Td>
                     <Table.Td><Text size="sm" c="dimmed">{p.note || '—'}</Text></Table.Td>
-                    <Table.Td>{p.is_active ? '启用' : '停用'}</Table.Td>
+                    <Table.Td>{p.is_active ? t('common.active') : t('common.inactive')}</Table.Td>
                     <Table.Td>
                       <Button variant="subtle" size="xs" onClick={() => navigate(`/people/${p.id}`)}>
-                        详情
+                        {t('common.view')}
                       </Button>
                     </Table.Td>
                   </Table.Tr>

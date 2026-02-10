@@ -2,12 +2,14 @@ import { Button, Paper, Select, SimpleGrid, Stack, Text, TextInput, Textarea, Ti
 import { IconArrowLeft, IconDeviceFloppy } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { peopleApi } from '../api/people';
 import { PERSON_ROLES } from '../constants/countries';
 import { showError, showSuccess } from '../utils/errorToast';
 import { usePersonStore } from '../stores/usePersonStore';
 
 export function PersonForm() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEdit = id && id !== 'new';
@@ -18,6 +20,9 @@ export function PersonForm() {
   const [role, setRole] = useState('');
   const [note, setNote] = useState('');
   const invalidatePersons = usePersonStore((s) => s.invalidate);
+
+  // Resolve role labels via i18n
+  const roleOptions = PERSON_ROLES.map((r) => ({ value: r.value, label: t(r.label) }));
 
   useEffect(() => {
     if (!isEdit || !id) {
@@ -31,14 +36,14 @@ export function PersonForm() {
       setNote(p.note ?? '');
       setLoadPerson(false);
     }).catch((e) => {
-      showError((e as { message?: string })?.message ?? '加载失败');
+      showError((e as { message?: string })?.message ?? t('common.failedToLoad'));
       setLoadPerson(false);
     });
-  }, [id, isEdit]);
+  }, [id, isEdit, t]);
 
   const handleSubmit = useCallback(async () => {
     if (!displayName.trim()) {
-      showError('请填写姓名');
+      showError(t('person.form.nameRequired'));
       return;
     }
     setLoading(true);
@@ -51,7 +56,7 @@ export function PersonForm() {
           role: role.trim() || undefined,
           note: note.trim() || undefined,
         });
-        showSuccess('已保存');
+        showSuccess(t('common.saved'));
         invalidatePersons();
         navigate(`/people/${id}`);
       } else {
@@ -61,40 +66,40 @@ export function PersonForm() {
           role: role.trim() || undefined,
           note: note.trim() || undefined,
         });
-        showSuccess('已创建');
+        showSuccess(t('common.created'));
         invalidatePersons();
         navigate(`/people/${p.id}`);
       }
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? (isEdit ? '保存失败' : '创建失败'));
+      showError((e as { message?: string })?.message ?? (isEdit ? t('common.failedToSave') : t('common.failedToCreate')));
     } finally {
       setLoading(false);
     }
-  }, [id, isEdit, displayName, email, role, note, navigate]);
+  }, [id, isEdit, displayName, email, role, note, navigate, t, invalidatePersons]);
 
-  if (loadPerson) return <Text size="sm">加载中…</Text>;
+  if (loadPerson) return <Text size="sm">{t('common.loading')}</Text>;
 
   return (
     <Stack gap="md" w="100%" maw={640} pb="xl" style={{ alignSelf: 'flex-start' }}>
       <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/people')}>
-        返回列表
+        {t('common.backToList')}
       </Button>
       <Paper>
         <Stack gap="md">
-          <Title order={3}>{isEdit ? '编辑成员' : '新建成员'}</Title>
+          <Title order={3}>{isEdit ? t('person.form.editTitle') : t('person.form.newTitle')}</Title>
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing="md">
-            <TextInput label="姓名" required value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="显示名称" />
-            <TextInput label="邮箱" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="选填" type="email" />
+            <TextInput label={t('person.form.name')} required value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={t('person.form.namePlaceholder')} />
+            <TextInput label={t('person.form.email')} value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('common.optional')} type="email" />
             <Select
-              label="角色"
-              placeholder="选择角色"
-              data={PERSON_ROLES}
+              label={t('person.form.role')}
+              placeholder={t('person.form.rolePlaceholder')}
+              data={roleOptions}
               value={role}
               onChange={(v) => setRole(v || '')}
               clearable
               searchable
             />
-            <Textarea label="备注" value={note} onChange={(e) => setNote(e.target.value)} placeholder="选填" minRows={1} />
+            <Textarea label={t('person.form.note')} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('common.optional')} minRows={1} />
           </SimpleGrid>
           <Button
             loading={loading}
@@ -104,7 +109,7 @@ export function PersonForm() {
             leftSection={<IconDeviceFloppy size={18} />}
             style={{ alignSelf: 'flex-start' }}
           >
-            {isEdit ? '保存' : '创建'}
+            {isEdit ? t('common.save') : t('common.create')}
           </Button>
         </Stack>
       </Paper>

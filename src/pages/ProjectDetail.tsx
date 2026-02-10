@@ -16,6 +16,7 @@ import {
 import { IconArrowLeft, IconEdit, IconPlus } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { assignmentApi } from '../api/assignments';
 import { peopleApi } from '../api/people';
 import { projectApi, type ProjectDetail as ProjectDetailType } from '../api/projects';
@@ -37,6 +38,7 @@ function needsNote(from: string | null, to: string): boolean {
 }
 
 export function ProjectDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [project, setProject] = useState<ProjectDetailType | null>(null);
@@ -54,11 +56,11 @@ export function ProjectDetail() {
       setProject(p);
       setOwnerId(p.owner_person_id);
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? '加载失败');
+      showError((e as { message?: string })?.message ?? t('common.failedToLoad'));
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
     load();
@@ -74,7 +76,7 @@ export function ProjectDetail() {
     if (!id || !statusModal) return;
     const { to, note } = statusModal;
     if (needsNote(project?.current_status ?? null, to) && !note.trim()) {
-      showError('该状态变更需要填写备注');
+      showError(t('project.detail.noteRequiredError'));
       return;
     }
     try {
@@ -85,9 +87,9 @@ export function ProjectDetail() {
       });
       setStatusModal(null);
       load();
-      showSuccess('状态已更新');
+      showSuccess(t('project.detail.statusUpdated'));
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? '状态更新失败');
+      showError((e as { message?: string })?.message ?? t('project.detail.statusUpdateFailed'));
     }
   };
 
@@ -97,9 +99,9 @@ export function ProjectDetail() {
       await assignmentApi.addMember({ projectId: id, personId: addPersonId });
       setAddPersonId(null);
       load();
-      showSuccess('已加入成员');
+      showSuccess(t('project.detail.memberAdded'));
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? '加入失败');
+      showError((e as { message?: string })?.message ?? t('project.detail.memberAddFailed'));
     }
   };
 
@@ -108,9 +110,9 @@ export function ProjectDetail() {
     try {
       await assignmentApi.endMember({ projectId: id, personId });
       load();
-      showSuccess('已退出');
+      showSuccess(t('project.detail.memberRemoved'));
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? '操作失败');
+      showError((e as { message?: string })?.message ?? t('project.detail.operationFailed'));
     }
   };
 
@@ -120,13 +122,13 @@ export function ProjectDetail() {
     try {
       await projectApi.update({ id, ownerPersonId: ownerId });
       load();
-      showSuccess('负责人已更新');
+      showSuccess(t('project.detail.ownerUpdated'));
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? '更新失败');
+      showError((e as { message?: string })?.message ?? t('project.detail.ownerUpdateFailed'));
     }
   };
 
-  if (!id) return <Text>缺少项目 ID</Text>;
+  if (!id) return <Text>{t('project.detail.missingId')}</Text>;
   if (loading || !project) {
     return <Loader size="sm" />;
   }
@@ -148,10 +150,10 @@ export function ProjectDetail() {
     <Stack gap="md" w="100%" pb="xl" style={{ minWidth: 0 }}>
       <Flex wrap="wrap" gap="xs" justify="space-between" align="center">
         <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/projects')}>
-          返回列表
+          {t('common.backToList')}
         </Button>
         <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => navigate(`/projects/${id}/edit`)}>
-          编辑
+          {t('common.edit')}
         </Button>
       </Flex>
 
@@ -175,13 +177,13 @@ export function ProjectDetail() {
           </Flex>
           <Text size="sm" style={{ color: 'rgba(255,255,255,0.9)' }}>{project.description || '—'}</Text>
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs" verticalSpacing="xs">
-            <Text size="sm" style={{ color: 'white' }}>国家：{project.country_code}</Text>
-            <Text size="sm" style={{ color: 'white' }}>合作方：{project.partner_name}</Text>
+            <Text size="sm" style={{ color: 'white' }}>{t('project.detail.country', { value: project.country_code })}</Text>
+            <Text size="sm" style={{ color: 'white' }}>{t('project.detail.partner', { value: project.partner_name })}</Text>
           </SimpleGrid>
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs" verticalSpacing="xs">
-            <Text size="sm" style={{ color: 'white' }}>开始：{project.start_date ?? '—'}</Text>
-            <Text size="sm" style={{ color: 'white' }}>截止：{project.due_date ?? '—'}</Text>
-            <Text size="sm" style={{ color: 'white' }}>标签：{project.tags?.length ? project.tags.join(', ') : '—'}</Text>
+            <Text size="sm" style={{ color: 'white' }}>{t('project.detail.startDate', { value: project.start_date ?? '—' })}</Text>
+            <Text size="sm" style={{ color: 'white' }}>{t('project.detail.dueDate', { value: project.due_date ?? '—' })}</Text>
+            <Text size="sm" style={{ color: 'white' }}>{t('project.detail.tags', { value: project.tags?.length ? project.tags.join(', ') : '—' })}</Text>
           </SimpleGrid>
         </Stack>
       </Paper>
@@ -190,7 +192,7 @@ export function ProjectDetail() {
         <Stack gap="sm">
           <Flex wrap="wrap" gap="xs" justify="space-between" align="center">
             <div>
-              <Text size="sm" c="dimmed" mb={4}>负责人</Text>
+              <Text size="sm" c="dimmed" mb={4}>{t('project.detail.owner')}</Text>
               <Flex gap="xs" align="center">
                 <Select
                   size="xs"
@@ -200,7 +202,7 @@ export function ProjectDetail() {
                   onChange={setOwnerId}
                   searchable
                 />
-                <Button size="xs" onClick={handleSaveOwner}>保存</Button>
+                <Button size="xs" onClick={handleSaveOwner}>{t('common.save')}</Button>
               </Flex>
             </div>
             <Button
@@ -209,14 +211,14 @@ export function ProjectDetail() {
               onClick={() => setStatusModal({ to: '', note: '' })}
               disabled={canTransitionTo.length === 0}
             >
-              变更状态
+              {t('project.detail.changeStatus')}
             </Button>
           </Flex>
         </Stack>
       </Paper>
 
       <Paper>
-        <Title order={5} mb="xs">成员</Title>
+        <Title order={5} mb="xs">{t('project.detail.members')}</Title>
         <Stack gap="xs">
           <Flex wrap="wrap" gap="xs" align="flex-end">
             <Select
@@ -225,20 +227,20 @@ export function ProjectDetail() {
               data={personOptions.filter((o) => !activeAssignments.some((a) => a.person_id === o.value))}
               value={addPersonId}
               onChange={setAddPersonId}
-              placeholder="选择成员加入"
+              placeholder={t('project.detail.selectMember')}
               searchable
             />
-            <Button size="xs" leftSection={<IconPlus size={14} />} onClick={handleAddMember} disabled={!addPersonId}>加入</Button>
+            <Button size="xs" leftSection={<IconPlus size={14} />} onClick={handleAddMember} disabled={!addPersonId}>{t('project.detail.addMember')}</Button>
           </Flex>
           <Table.ScrollContainer minWidth={400}>
           <Table>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>姓名</Table.Th>
-                <Table.Th>角色</Table.Th>
-                <Table.Th>开始</Table.Th>
-                <Table.Th>结束</Table.Th>
-                <Table.Th>操作</Table.Th>
+                <Table.Th>{t('project.detail.colName')}</Table.Th>
+                <Table.Th>{t('project.detail.colRole')}</Table.Th>
+                <Table.Th>{t('project.detail.colStart')}</Table.Th>
+                <Table.Th>{t('project.detail.colEnd')}</Table.Th>
+                <Table.Th>{t('project.detail.colActions')}</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -256,7 +258,7 @@ export function ProjectDetail() {
                         variant="light"
                         onClick={() => handleEndMember(a.person_id)}
                       >
-                        退出
+                        {t('project.detail.removeMember')}
                       </Button>
                     )}
                   </Table.Td>
@@ -269,15 +271,15 @@ export function ProjectDetail() {
       </Paper>
 
       <Paper>
-        <Title order={5} mb="xs">状态时间线</Title>
+        <Title order={5} mb="xs">{t('project.detail.statusTimeline')}</Title>
         <Table.ScrollContainer minWidth={500}>
         <Table>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>时间</Table.Th>
-              <Table.Th>变更</Table.Th>
-              <Table.Th>操作人</Table.Th>
-              <Table.Th>备注</Table.Th>
+              <Table.Th>{t('project.detail.colTime')}</Table.Th>
+              <Table.Th>{t('project.detail.colChange')}</Table.Th>
+              <Table.Th>{t('project.detail.colChangedBy')}</Table.Th>
+              <Table.Th>{t('project.detail.colNote')}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -297,22 +299,22 @@ export function ProjectDetail() {
       <Modal
         opened={!!statusModal}
         onClose={() => setStatusModal(null)}
-        title="变更状态"
+        title={t('project.detail.statusModalTitle')}
       >
         <Stack>
           <Select
-            label="目标状态"
+            label={t('project.detail.targetStatus')}
             data={canTransitionTo.map((s) => ({ value: s, label: s }))}
             value={statusModal?.to ?? null}
             onChange={(v) => v && setStatusModal((m) => ({ ...(m ?? { to: '', note: '' }), to: v }))}
           />
           <Textarea
-            label="备注"
-            placeholder={needsNote(project.current_status, statusModal?.to ?? '') ? '此变更必须填写备注' : '选填'}
+            label={t('project.detail.colNote')}
+            placeholder={needsNote(project.current_status, statusModal?.to ?? '') ? t('project.detail.noteRequired') : t('common.optional')}
             value={statusModal?.note ?? ''}
             onChange={(e) => setStatusModal((m) => m ? { ...m, note: e.target.value } : null)}
           />
-          <Button onClick={handleChangeStatus} disabled={!statusModal?.to}>确认</Button>
+          <Button onClick={handleChangeStatus} disabled={!statusModal?.to}>{t('common.confirm')}</Button>
         </Stack>
       </Modal>
     </Stack>

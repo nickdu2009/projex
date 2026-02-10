@@ -1,14 +1,16 @@
 /**
- * 同步状态栏组件
- * 显示在页面底部，实时显示同步状态
+ * Sync status bar component
+ * Displayed at the bottom of the page, showing real-time sync status
  */
 
 import { Group, Text, Loader, ThemeIcon, ActionIcon, Tooltip } from '@mantine/core';
-import { IconCloud, IconCloudCheck, IconCloudX, IconRefresh } from '@tabler/icons-react';
+import { IconCloudCheck, IconCloudX, IconRefresh } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { syncManager, type SyncState } from '../sync/SyncManager';
 
 export function SyncStatusBar() {
+  const { t } = useTranslation();
   const [state, setState] = useState<SyncState>(syncManager.getState());
 
   useEffect(() => {
@@ -44,20 +46,20 @@ export function SyncStatusBar() {
 
   const getStatusText = () => {
     if (state.status === 'syncing') {
-      return '同步中...';
+      return t('sync.syncing');
     }
     if (state.status === 'error') {
-      return `同步失败: ${state.error}`;
+      return t('sync.failed', { error: state.error });
     }
     if (state.lastSync) {
       const diff = Date.now() - state.lastSync.getTime();
       const minutes = Math.floor(diff / 60000);
-      if (minutes === 0) return '刚刚同步';
-      if (minutes < 60) return `${minutes} 分钟前同步`;
+      if (minutes === 0) return t('sync.justSynced');
+      if (minutes < 60) return t('sync.minutesAgo', { minutes });
       const hours = Math.floor(minutes / 60);
-      return `${hours} 小时前同步`;
+      return t('sync.hoursAgo', { hours });
     }
-    return '未同步';
+    return t('sync.notSynced');
   };
 
   const getStatusColor = () => {
@@ -84,13 +86,13 @@ export function SyncStatusBar() {
         </Text>
         {state.pendingChanges > 0 && (
           <Text size="xs" c="orange">
-            ({state.pendingChanges} 个待同步更改)
+            {t('sync.pendingChanges', { count: state.pendingChanges })}
           </Text>
         )}
       </Group>
 
       <Group gap="xs">
-        <Tooltip label="手动同步">
+        <Tooltip label={t('sync.manualSync')}>
           <ActionIcon
             variant="subtle"
             size="sm"
