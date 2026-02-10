@@ -1,8 +1,9 @@
-mod app;
+pub mod app;
 mod commands;
-mod domain;
-mod error;
-mod infra;
+pub mod domain;
+pub mod error;
+pub mod infra;
+pub mod sync;
 
 use infra::init_db;
 use std::path::PathBuf;
@@ -42,7 +43,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::assignment::cmd_assignment_add_member,
             commands::assignment::cmd_assignment_end_member,
-            commands::export::cmd_export_json,
+            commands::assignment::cmd_assignment_list_by_project,
+            commands::data_transfer::cmd_export_json,
+            commands::data_transfer::cmd_import_json,
             commands::partner::cmd_partner_create,
             commands::partner::cmd_partner_get,
             commands::partner::cmd_partner_list,
@@ -61,6 +64,12 @@ pub fn run() {
             commands::project::cmd_project_update,
             commands::project::cmd_project_list,
             commands::project::cmd_project_change_status,
+            commands::sync::cmd_sync_get_config,
+            commands::sync::cmd_sync_update_config,
+            commands::sync::cmd_sync_get_status,
+            commands::sync::cmd_sync_full,
+            commands::sync::cmd_sync_create_snapshot,
+            commands::sync::cmd_sync_restore_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

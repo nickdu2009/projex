@@ -113,42 +113,47 @@ pub fn partner_get(pool: &DbPool, id: &str) -> Result<PartnerDto, AppError> {
 
 pub fn partner_update(pool: &DbPool, req: PartnerUpdateReq) -> Result<PartnerDto, AppError> {
     let now = Utc::now().to_rfc3339();
-    let conn = get_connection(pool);
 
-    let (name, note): (String, String) = conn
-        .query_row(
-            "SELECT name, note FROM partners WHERE id = ?1",
-            [&req.id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+    {
+        let conn = get_connection(pool);
+
+        let (name, note): (String, String) = conn
+            .query_row(
+                "SELECT name, note FROM partners WHERE id = ?1",
+                [&req.id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(|_| AppError::NotFound(format!("partner {}", req.id)))?;
+
+        let name = req
+            .name
+            .as_deref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or(name);
+        let note = req.note.unwrap_or(note);
+
+        if name.is_empty() {
+            return Err(AppError::Validation("name is required".into()));
+        }
+
+        conn.execute(
+            "UPDATE partners SET name = ?1, note = ?2, updated_at = ?3 WHERE id = ?4",
+            params![&name, &note, &now, &req.id],
         )
-        .map_err(|_| AppError::NotFound(format!("partner {}", req.id)))?;
-
-    let name = req
-        .name
-        .as_deref()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or(name);
-    let note = req.note.unwrap_or(note);
-
-    if name.is_empty() {
-        return Err(AppError::Validation("name is required".into()));
-    }
-
-    conn.execute(
-        "UPDATE partners SET name = ?1, note = ?2, updated_at = ?3 WHERE id = ?4",
-        params![&name, &note, &now, &req.id],
-    )
-    .map_err(|e| AppError::Db(e.to_string()))?;
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    } // release conn before calling partner_get to avoid deadlock
 
     partner_get(pool, &req.id)
 }
 
 pub fn partner_deactivate(pool: &DbPool, id: &str) -> Result<PartnerDto, AppError> {
     let now = Utc::now().to_rfc3339();
-    let conn = get_connection(pool);
-    conn.execute("UPDATE partners SET is_active = 0, updated_at = ?1 WHERE id = ?2", params![&now, id])
-        .map_err(|e| AppError::Db(e.to_string()))?;
+    {
+        let conn = get_connection(pool);
+        conn.execute("UPDATE partners SET is_active = 0, updated_at = ?1 WHERE id = ?2", params![&now, id])
+            .map_err(|e| AppError::Db(e.to_string()))?;
+    } // release conn before calling partner_get to avoid deadlock
     partner_get(pool, id)
 }
 

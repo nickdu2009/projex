@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { partnersApi } from '../api/partners';
 import { showError, showSuccess } from '../utils/errorToast';
+import { usePartnerStore } from '../stores/usePartnerStore';
 
 export function PartnerForm() {
   const { id } = useParams<{ id: string }>();
@@ -13,6 +14,7 @@ export function PartnerForm() {
   const [loadPartner, setLoadPartner] = useState(true);
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
+  const invalidatePartners = usePartnerStore((s) => s.invalidate);
 
   useEffect(() => {
     if (!isEdit || !id) {
@@ -39,10 +41,12 @@ export function PartnerForm() {
       if (isEdit && id) {
         await partnersApi.update({ id, name: name.trim(), note: note.trim() || undefined });
         showSuccess('已保存');
+        invalidatePartners();
         navigate(`/partners/${id}`);
       } else {
         const p = await partnersApi.create({ name: name.trim(), note: note.trim() || undefined });
         showSuccess('已创建');
+        invalidatePartners();
         navigate(`/partners/${p.id}`);
       }
     } catch (e: unknown) {

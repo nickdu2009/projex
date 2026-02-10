@@ -36,27 +36,30 @@ fn run_migrations(conn: &mut Connection) -> Result<(), crate::error::AppError> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| crate::error::AppError::Db(e.to_string()))?;
 
-    const MIGRATIONS: &[(i32, &str)] = &[
-        (1, include_str!("../../migrations/0001_init.sql")),
-        (2, include_str!("../../migrations/0002_add_person_email_role.sql")),
-    ];
+const MIGRATIONS: &[(i32, &str)] = &[
+    (1, include_str!("../../migrations/0001_init.sql")),
+    (2, include_str!("../../migrations/0002_add_person_email_role.sql")),
+    (3, include_str!("../../migrations/0003_add_sync_support.sql")),
+];
 
     for (version, sql) in MIGRATIONS {
         if applied.contains(version) {
             continue;
         }
-        // Skip the INSERT into schema_migrations in the script - we do it ourselves
-        let statements: Vec<&str> = sql
-            .split(';')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty() && !s.contains("INSERT INTO schema_migrations"))
-            .collect();
-        for stmt in statements {
-            if !stmt.is_empty() {
-                tx.execute(stmt, [])
-                    .map_err(|e| crate::error::AppError::Db(e.to_string()))?;
-            }
-        }
+        // Filter out the script's own INSERT INTO schema_migrations (we track it ourselves)
+        let filtered: String = sql
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim().to_uppercase();
+                !trimmed.starts_with("INSERT INTO SCHEMA_MIGRATIONS")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Use execute_batch to correctly handle CREATE TRIGGER ... BEGIN ... END blocks
+        tx.execute_batch(&filtered)
+            .map_err(|e| crate::error::AppError::Db(format!("migration v{}: {}", version, e)))?;
+
         tx.execute("INSERT INTO schema_migrations (version, applied_at) VALUES (?1, datetime('now'))", [version])
             .map_err(|e| crate::error::AppError::Db(e.to_string()))?;
     }
@@ -68,4 +71,11 @@ fn run_migrations(conn: &mut Connection) -> Result<(), crate::error::AppError> {
 /// Get connection from pool (for use in commands).
 pub fn get_connection(pool: &DbPool) -> std::sync::MutexGuard<'_, Connection> {
     pool.0.lock().expect("db lock")
+}
+
+/// Create an in-memory database with all migrations applied (for testing).
+pub fn init_test_db() -> DbPool {
+    let mut conn = Connection::open_in_memory().expect("open in-memory DB");
+    run_migrations(&mut conn).expect("run migrations");
+    DbPool(Mutex::new(conn))
 }

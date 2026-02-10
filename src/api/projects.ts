@@ -13,6 +13,27 @@ export interface ProjectListItem {
   tags: string[];
 }
 
+export interface ProjectListPage {
+  items: ProjectListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ProjectListReq {
+  onlyUnarchived?: boolean;
+  statuses?: string[];
+  countryCodes?: string[];
+  partnerIds?: string[];
+  ownerPersonIds?: string[];
+  participantPersonIds?: string[];
+  tags?: string[];
+  sortBy?: string;
+  sortOrder?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface ProjectDetail {
   id: string;
   name: string;
@@ -57,8 +78,8 @@ export interface StatusHistoryDto {
 }
 
 export const projectApi = {
-  list: (req?: { onlyUnarchived?: boolean }) =>
-    invokeCmd<ProjectListItem[]>('cmd_project_list', req ? { req } : {}),
+  list: (req?: ProjectListReq) =>
+    invokeCmd<ProjectListPage>('cmd_project_list', req ? { req } : {}),
   get: (id: string) => invokeCmd<ProjectDetail>('cmd_project_get', { req: { id } }),
   create: (req: {
     name: string;

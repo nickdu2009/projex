@@ -5,6 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { partnersApi, type PartnerDto, type PartnerProjectItem } from '../api/partners';
 import { showError, showSuccess } from '../utils/errorToast';
 import { getProjectStatusColor } from '../utils/statusColor';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 export function PartnerDetail() {
   const { id } = useParams<{ id: string }>();
@@ -12,6 +13,8 @@ export function PartnerDetail() {
   const [partner, setPartner] = useState<PartnerDto | null>(null);
   const [projects, setProjects] = useState<PartnerProjectItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -35,14 +38,17 @@ export function PartnerDetail() {
   }, [load]);
 
   const handleDeactivate = async () => {
-    if (!id || !partner?.is_active) return;
-    if (!window.confirm(`确定停用「${partner.name}」？`)) return;
+    if (!id) return;
+    setDeactivating(true);
     try {
       await partnersApi.deactivate(id);
       showSuccess('已停用');
+      setConfirmOpen(false);
       load();
     } catch (e: unknown) {
       showError((e as { message?: string })?.message ?? '停用失败');
+    } finally {
+      setDeactivating(false);
     }
   };
 
@@ -60,7 +66,7 @@ export function PartnerDetail() {
             编辑
           </Button>
           {partner.is_active && (
-            <Button variant="light" color="red" onClick={handleDeactivate}>
+            <Button variant="light" color="red" onClick={() => setConfirmOpen(true)}>
               停用
             </Button>
           )}
@@ -124,6 +130,16 @@ export function PartnerDetail() {
           </Table.ScrollContainer>
         )}
       </Paper>
+      <ConfirmModal
+        opened={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={handleDeactivate}
+        title="停用合作方"
+        message={`确定停用「${partner.name}」？停用后不可被新项目选择，但历史项目仍正常展示。`}
+        confirmLabel="停用"
+        confirmColor="red"
+        loading={deactivating}
+      />
     </Stack>
   );
 }

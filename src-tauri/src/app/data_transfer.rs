@@ -1,11 +1,12 @@
-//! Export use case: export all data to JSON.
+//! Export / Import use cases: export all data to JSON, import from JSON.
 
 use crate::error::AppError;
 use crate::infra::{get_connection, DbPool};
 use chrono::Utc;
-use serde::Serialize;
+use rusqlite::params;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportRoot {
     pub schema_version: i32,
@@ -17,7 +18,7 @@ pub struct ExportRoot {
     pub status_history: Vec<ExportStatusHistory>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportPerson {
     pub id: String,
@@ -30,7 +31,7 @@ pub struct ExportPerson {
     pub updated_at: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportPartner {
     pub id: String,
@@ -41,7 +42,7 @@ pub struct ExportPartner {
     pub updated_at: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportProject {
     pub id: String,
@@ -60,7 +61,7 @@ pub struct ExportProject {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportAssignment {
     pub id: String,
@@ -72,7 +73,7 @@ pub struct ExportAssignment {
     pub created_at: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportStatusHistory {
     pub id: String,
@@ -82,6 +83,17 @@ pub struct ExportStatusHistory {
     pub changed_at: String,
     pub changed_by_person_id: Option<String>,
     pub note: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    pub persons: usize,
+    pub partners: usize,
+    pub projects: usize,
+    pub assignments: usize,
+    pub status_history: usize,
+    pub skipped_duplicates: usize,
 }
 
 /// Export all data as JSON string
@@ -225,4 +237,96 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
     };
 
     serde_json::to_string_pretty(&export_root).map_err(|e| AppError::Db(format!("JSON serialization failed: {}", e)))
+}
+
+/// Import data from JSON string. Uses INSERT OR IGNORE for idempotency (duplicate IDs are skipped).
+pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, AppError> {
+    let root: ExportRoot = serde_json::from_str(json)
+        .map_err(|e| AppError::Validation(format!("Invalid JSON: {}", e)))?;
+
+    if root.schema_version != 1 {
+        return Err(AppError::Validation(format!(
+            "Unsupported schema version: {} (expected 1)",
+            root.schema_version
+        )));
+    }
+
+    let conn = get_connection(pool);
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Db(e.to_string()))?;
+
+    let mut skipped = 0usize;
+
+    // 1. Import persons (must come before projects/assignments due to FK)
+    let mut persons_count = 0usize;
+    for p in &root.persons {
+        let changed = tx.execute(
+            "INSERT OR IGNORE INTO persons (id, display_name, email, role, note, is_active, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![p.id, p.display_name, p.email, p.role, p.note, p.is_active as i32, p.created_at, p.updated_at],
+        ).map_err(|e| AppError::Db(e.to_string()))?;
+        if changed > 0 { persons_count += 1; } else { skipped += 1; }
+    }
+
+    // 2. Import partners (must come before projects due to FK)
+    let mut partners_count = 0usize;
+    for p in &root.partners {
+        let changed = tx.execute(
+            "INSERT OR IGNORE INTO partners (id, name, note, is_active, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![p.id, p.name, p.note, p.is_active as i32, p.created_at, p.updated_at],
+        ).map_err(|e| AppError::Db(e.to_string()))?;
+        if changed > 0 { partners_count += 1; } else { skipped += 1; }
+    }
+
+    // 3. Import projects
+    let mut projects_count = 0usize;
+    for p in &root.projects {
+        let changed = tx.execute(
+            "INSERT OR IGNORE INTO projects (id, name, description, priority, current_status, country_code, partner_id, owner_person_id, start_date, due_date, created_at, updated_at, archived_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![p.id, p.name, p.description, p.priority, p.current_status, p.country_code, p.partner_id, p.owner_person_id, p.start_date, p.due_date, p.created_at, p.updated_at, p.archived_at],
+        ).map_err(|e| AppError::Db(e.to_string()))?;
+        if changed > 0 {
+            projects_count += 1;
+            // Import tags for this project
+            for tag in &p.tags {
+                tx.execute(
+                    "INSERT OR IGNORE INTO project_tags (project_id, tag, created_at) VALUES (?1, ?2, ?3)",
+                    params![p.id, tag, p.created_at],
+                ).map_err(|e| AppError::Db(e.to_string()))?;
+            }
+        } else {
+            skipped += 1;
+        }
+    }
+
+    // 4. Import assignments
+    let mut assignments_count = 0usize;
+    for a in &root.assignments {
+        let changed = tx.execute(
+            "INSERT OR IGNORE INTO assignments (id, project_id, person_id, role, start_at, end_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![a.id, a.project_id, a.person_id, a.role, a.start_at, a.end_at, a.created_at],
+        ).map_err(|e| AppError::Db(e.to_string()))?;
+        if changed > 0 { assignments_count += 1; } else { skipped += 1; }
+    }
+
+    // 5. Import status_history
+    let mut history_count = 0usize;
+    for h in &root.status_history {
+        let changed = tx.execute(
+            "INSERT OR IGNORE INTO status_history (id, project_id, from_status, to_status, changed_at, changed_by_person_id, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![h.id, h.project_id, h.from_status, h.to_status, h.changed_at, h.changed_by_person_id, h.note],
+        ).map_err(|e| AppError::Db(e.to_string()))?;
+        if changed > 0 { history_count += 1; } else { skipped += 1; }
+    }
+
+    tx.commit().map_err(|e| AppError::Db(e.to_string()))?;
+
+    Ok(ImportResult {
+        persons: persons_count,
+        partners: partners_count,
+        projects: projects_count,
+        assignments: assignments_count,
+        status_history: history_count,
+        skipped_duplicates: skipped,
+    })
 }

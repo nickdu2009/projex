@@ -7,6 +7,9 @@ import {
   IconBriefcase,
 } from '@tabler/icons-react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { SyncStatusBar } from '../components/SyncStatusBar';
+import { syncManager } from '../sync/SyncManager';
 
 const NAV = [
   { to: '/projects', label: '项目', icon: IconFolder },
@@ -18,11 +21,22 @@ const NAV = [
 export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [syncEnabled, setSyncEnabled] = useState(false);
+
+  useEffect(() => {
+    syncManager.getConfig().then((cfg) => {
+      setSyncEnabled(cfg.enabled);
+      if (cfg.enabled) {
+        syncManager.initialize();
+      }
+    }).catch(() => {});
+  }, []);
 
   return (
     <AppShell
       header={{ height: 56 }}
       navbar={{ width: { base: 200, md: 220 }, breakpoint: 'sm' }}
+      footer={syncEnabled ? { height: 40 } : undefined}
       padding={{ base: 'xs', sm: 'md' }}
       styles={{
         root: { height: '100vh', width: '100vw' },
@@ -71,6 +85,11 @@ export function Layout() {
       <AppShell.Main>
         <Outlet />
       </AppShell.Main>
+      {syncEnabled && (
+        <AppShell.Footer>
+          <SyncStatusBar />
+        </AppShell.Footer>
+      )}
     </AppShell>
   );
 }

@@ -1,6 +1,6 @@
 use crate::app::{
     project_change_status, project_create, project_get, project_list, project_update,
-    ProjectChangeStatusReq, ProjectCreateReq, ProjectDetailDto, ProjectListItemDto, ProjectListReq,
+    ProjectChangeStatusReq, ProjectCreateReq, ProjectDetailDto, ProjectListPage, ProjectListReq,
     ProjectUpdateReq,
 };
 use crate::error::AppError;
@@ -30,7 +30,7 @@ pub fn cmd_project_update(pool: State<DbPool>, req: ProjectUpdateReq) -> Result<
 }
 
 #[tauri::command]
-pub fn cmd_project_list(pool: State<DbPool>, req: Option<ProjectListReq>) -> Result<Vec<ProjectListItemDto>, AppError> {
+pub fn cmd_project_list(pool: State<DbPool>, req: Option<ProjectListReq>) -> Result<ProjectListPage, AppError> {
     project_list(&pool, req.unwrap_or_default())
 }
 

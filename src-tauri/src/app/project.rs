@@ -78,6 +78,10 @@ pub struct ProjectListReq {
     pub country_codes: Option<Vec<String>>,
     pub partner_ids: Option<Vec<String>>,
     pub owner_person_ids: Option<Vec<String>>,
+    pub participant_person_ids: Option<Vec<String>>,
+    pub tags: Option<Vec<String>>,
+    pub sort_by: Option<String>,   // "updatedAt" | "priority" | "dueDate"
+    pub sort_order: Option<String>, // "asc" | "desc"
     pub limit: Option<i32>,
     pub offset: Option<i32>,
 }
@@ -94,6 +98,14 @@ pub struct ProjectListItemDto {
     pub due_date: Option<String>,
     pub updated_at: String,
     pub tags: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProjectListPage {
+    pub items: Vec<ProjectListItemDto>,
+    pub total: i64,
+    pub limit: i32,
+    pub offset: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -447,40 +459,175 @@ pub fn project_update(pool: &DbPool, req: ProjectUpdateReq) -> Result<ProjectDet
     project_get(pool, &req.id)
 }
 
-pub fn project_list(pool: &DbPool, req: ProjectListReq) -> Result<Vec<ProjectListItemDto>, AppError> {
+pub fn project_list(pool: &DbPool, req: ProjectListReq) -> Result<ProjectListPage, AppError> {
+    use rusqlite::types::Value;
+
     let only_unarchived = req.only_unarchived.unwrap_or(true);
     let limit = req.limit.unwrap_or(50).clamp(1, 200);
     let offset = req.offset.unwrap_or(0).max(0);
 
     let conn = get_connection(pool);
 
-    let mut sql = String::from(
-        "SELECT p.id, p.name, p.current_status, p.priority, p.country_code, pt.name AS partner_name, pe.display_name AS owner_name, p.due_date, p.updated_at
-         FROM projects p
-         LEFT JOIN partners pt ON pt.id = p.partner_id
-         LEFT JOIN persons pe ON pe.id = p.owner_person_id
-         WHERE 1=1",
-    );
-    if only_unarchived {
-        sql.push_str(" AND p.current_status <> 'ARCHIVED'");
-    }
-    sql.push_str(" ORDER BY p.updated_at DESC LIMIT ?1 OFFSET ?2");
+    // --- build dynamic WHERE clauses ---
+    let mut conditions: Vec<String> = Vec::new();
+    let mut bind_values: Vec<Value> = Vec::new();
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| AppError::Db(e.to_string()))?;
-    let mut rows = stmt.query(params![limit, offset]).map_err(|e| AppError::Db(e.to_string()))?;
-    let mut out = Vec::new();
+    if only_unarchived {
+        conditions.push("p.current_status <> 'ARCHIVED'".to_string());
+    }
+
+    if let Some(ref statuses) = req.statuses {
+        let v: Vec<&String> = statuses.iter().filter(|s| !s.is_empty()).collect();
+        if !v.is_empty() {
+            let ph: Vec<String> = v.iter().enumerate().map(|_| "?".to_string()).collect();
+            conditions.push(format!("p.current_status IN ({})", ph.join(",")));
+            for s in v {
+                bind_values.push(Value::Text(s.clone()));
+            }
+        }
+    }
+
+    if let Some(ref codes) = req.country_codes {
+        let v: Vec<&String> = codes.iter().filter(|s| !s.is_empty()).collect();
+        if !v.is_empty() {
+            let ph: Vec<String> = v.iter().enumerate().map(|_| "?".to_string()).collect();
+            conditions.push(format!("p.country_code IN ({})", ph.join(",")));
+            for s in v {
+                bind_values.push(Value::Text(s.clone()));
+            }
+        }
+    }
+
+    if let Some(ref pids) = req.partner_ids {
+        let v: Vec<&String> = pids.iter().filter(|s| !s.is_empty()).collect();
+        if !v.is_empty() {
+            let ph: Vec<String> = v.iter().enumerate().map(|_| "?".to_string()).collect();
+            conditions.push(format!("p.partner_id IN ({})", ph.join(",")));
+            for s in v {
+                bind_values.push(Value::Text(s.clone()));
+            }
+        }
+    }
+
+    if let Some(ref oids) = req.owner_person_ids {
+        let v: Vec<&String> = oids.iter().filter(|s| !s.is_empty()).collect();
+        if !v.is_empty() {
+            let ph: Vec<String> = v.iter().enumerate().map(|_| "?".to_string()).collect();
+            conditions.push(format!("p.owner_person_id IN ({})", ph.join(",")));
+            for s in v {
+                bind_values.push(Value::Text(s.clone()));
+            }
+        }
+    }
+
+    if let Some(ref ppids) = req.participant_person_ids {
+        let v: Vec<&String> = ppids.iter().filter(|s| !s.is_empty()).collect();
+        if !v.is_empty() {
+            let ph: Vec<String> = v.iter().enumerate().map(|_| "?".to_string()).collect();
+            conditions.push(format!(
+                "p.id IN (SELECT DISTINCT project_id FROM assignments WHERE person_id IN ({}))",
+                ph.join(",")
+            ));
+            for s in v {
+                bind_values.push(Value::Text(s.clone()));
+            }
+        }
+    }
+
+    if let Some(ref tag_list) = req.tags {
+        let v: Vec<&String> = tag_list.iter().filter(|s| !s.is_empty()).collect();
+        if !v.is_empty() {
+            let ph: Vec<String> = v.iter().enumerate().map(|_| "?".to_string()).collect();
+            conditions.push(format!(
+                "p.id IN (SELECT DISTINCT project_id FROM project_tags WHERE tag IN ({}))",
+                ph.join(",")
+            ));
+            for s in v {
+                bind_values.push(Value::Text(s.clone()));
+            }
+        }
+    }
+
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", conditions.join(" AND "))
+    };
+
+    // --- COUNT total ---
+    let count_sql = format!(
+        "SELECT COUNT(*) FROM projects p{}",
+        where_clause
+    );
+    let count_params: Vec<&dyn rusqlite::types::ToSql> =
+        bind_values.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
+    let total: i64 = conn
+        .query_row(&count_sql, count_params.as_slice(), |r| r.get(0))
+        .map_err(|e| AppError::Db(e.to_string()))?;
+
+    // --- ORDER BY ---
+    let order_clause = match req.sort_by.as_deref() {
+        Some("priority") => {
+            let dir = match req.sort_order.as_deref() {
+                Some("desc") => "DESC",
+                _ => "ASC",
+            };
+            format!(" ORDER BY p.priority {}, p.updated_at DESC", dir)
+        }
+        Some("dueDate") => {
+            let dir = match req.sort_order.as_deref() {
+                Some("desc") => "DESC",
+                _ => "ASC",
+            };
+            // NULL due_dates sort last regardless of direction
+            format!(" ORDER BY CASE WHEN p.due_date IS NULL THEN 1 ELSE 0 END, p.due_date {}, p.updated_at DESC", dir)
+        }
+        _ => {
+            // default: updatedAt DESC
+            let dir = match req.sort_order.as_deref() {
+                Some("asc") => "ASC",
+                _ => "DESC",
+            };
+            format!(" ORDER BY p.updated_at {}", dir)
+        }
+    };
+
+    // --- main query ---
+    let data_sql = format!(
+        "SELECT p.id, p.name, p.current_status, p.priority, p.country_code, \
+         COALESCE(pt.name, '?') AS partner_name, COALESCE(pe.display_name, '?') AS owner_name, \
+         p.due_date, p.updated_at \
+         FROM projects p \
+         LEFT JOIN partners pt ON pt.id = p.partner_id \
+         LEFT JOIN persons pe ON pe.id = p.owner_person_id\
+         {}{} LIMIT ? OFFSET ?",
+        where_clause, order_clause
+    );
+
+    let mut all_params = bind_values.clone();
+    all_params.push(Value::Integer(limit as i64));
+    all_params.push(Value::Integer(offset as i64));
+
+    let all_refs: Vec<&dyn rusqlite::types::ToSql> =
+        all_params.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
+
+    let mut stmt = conn.prepare(&data_sql).map_err(|e| AppError::Db(e.to_string()))?;
+    let mut rows = stmt.query(all_refs.as_slice()).map_err(|e| AppError::Db(e.to_string()))?;
+    let mut items = Vec::new();
     while let Some(row) = rows.next().map_err(|e| AppError::Db(e.to_string()))? {
         let id: String = row.get(0)?;
         let mut tags = Vec::new();
-        let mut tag_stmt = conn.prepare("SELECT tag FROM project_tags WHERE project_id = ?1")?;
-        let tag_rows = tag_stmt.query_map([&id], |r| r.get::<_, String>(0))?;
-        for tr in tag_rows {
-            if let Ok(t) = tr {
-                tags.push(t);
+        {
+            let mut tag_stmt = conn.prepare("SELECT tag FROM project_tags WHERE project_id = ?1")?;
+            let tag_rows = tag_stmt.query_map([&id], |r| r.get::<_, String>(0))?;
+            for tr in tag_rows {
+                if let Ok(t) = tr {
+                    tags.push(t);
+                }
             }
         }
-        out.push(ProjectListItemDto {
-            id: row.get(0)?,
+        items.push(ProjectListItemDto {
+            id,
             name: row.get(1)?,
             current_status: row.get(2)?,
             priority: row.get(3)?,
@@ -492,7 +639,13 @@ pub fn project_list(pool: &DbPool, req: ProjectListReq) -> Result<Vec<ProjectLis
             tags,
         });
     }
-    Ok(out)
+
+    Ok(ProjectListPage {
+        items,
+        total,
+        limit,
+        offset,
+    })
 }
 
 pub fn project_change_status(

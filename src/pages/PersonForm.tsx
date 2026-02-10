@@ -5,6 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { peopleApi } from '../api/people';
 import { PERSON_ROLES } from '../constants/countries';
 import { showError, showSuccess } from '../utils/errorToast';
+import { usePersonStore } from '../stores/usePersonStore';
 
 export function PersonForm() {
   const { id } = useParams<{ id: string }>();
@@ -16,6 +17,7 @@ export function PersonForm() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
   const [note, setNote] = useState('');
+  const invalidatePersons = usePersonStore((s) => s.invalidate);
 
   useEffect(() => {
     if (!isEdit || !id) {
@@ -50,6 +52,7 @@ export function PersonForm() {
           note: note.trim() || undefined,
         });
         showSuccess('已保存');
+        invalidatePersons();
         navigate(`/people/${id}`);
       } else {
         const p = await peopleApi.create({
@@ -59,6 +62,7 @@ export function PersonForm() {
           note: note.trim() || undefined,
         });
         showSuccess('已创建');
+        invalidatePersons();
         navigate(`/people/${p.id}`);
       }
     } catch (e: unknown) {

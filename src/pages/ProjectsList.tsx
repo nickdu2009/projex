@@ -2,7 +2,10 @@ import {
   Badge,
   Button,
   Flex,
+  Group,
   Loader,
+  MultiSelect,
+  Pagination,
   Paper,
   Select,
   Stack,
@@ -13,95 +16,90 @@ import {
 import { IconFolder, IconPlus } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { projectApi, type ProjectListItem } from '../api/projects';
+import { projectApi, type ProjectListItem, type ProjectListReq } from '../api/projects';
 import { COUNTRIES, PROJECT_STATUSES } from '../constants/countries';
 import { showError } from '../utils/errorToast';
-import { partnersApi } from '../api/partners';
-import { peopleApi } from '../api/people';
+import { usePartnerStore } from '../stores/usePartnerStore';
+import { usePersonStore } from '../stores/usePersonStore';
+import { useTagStore } from '../stores/useTagStore';
 import { getProjectStatusColor } from '../utils/statusColor';
 import { EmptyState } from '../components/EmptyState';
 
-type SortBy = 'updated_at' | 'priority' | 'due_date';
+type SortBy = 'updatedAt' | 'priority' | 'dueDate';
+
+const PAGE_SIZE = 50;
 
 export function ProjectsList() {
   const navigate = useNavigate();
   const [items, setItems] = useState<ProjectListItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // filters
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [countryFilter, setCountryFilter] = useState<string | null>(null);
-  const [partnerOptions, setPartnerOptions] = useState<{ value: string; label: string }[]>([]);
-  const [personOptions, setPersonOptions] = useState<{ value: string; label: string }[]>([]);
   const [partnerFilter, setPartnerFilter] = useState<string | null>(null);
   const [ownerFilter, setOwnerFilter] = useState<string | null>(null);
   const [memberFilter, setMemberFilter] = useState<string | null>(null);
-  const [memberProjectIds, setMemberProjectIds] = useState<string[]>([]);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [showArchived, setShowArchived] = useState(false);
-  const [sortBy, setSortBy] = useState<SortBy>('updated_at');
+  const [sortBy, setSortBy] = useState<SortBy>('updatedAt');
+  const [page, setPage] = useState(1);
+
+  // Zustand stores
+  const { loaded: partnersLoaded, fetch: fetchPartners, activeOptions: partnerOptions } = usePartnerStore();
+  const { loaded: personsLoaded, fetch: fetchPersons, activeOptions: personOptions } = usePersonStore();
+  const { tags: allTags, loaded: tagsLoaded, fetch: fetchTags } = useTagStore();
+
+  useEffect(() => {
+    if (!partnersLoaded) fetchPartners(true);
+    if (!personsLoaded) fetchPersons(true);
+    if (!tagsLoaded) fetchTags();
+  }, [partnersLoaded, personsLoaded, tagsLoaded, fetchPartners, fetchPersons, fetchTags]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await projectApi.list({
+      const req: ProjectListReq = {
         onlyUnarchived: !showArchived,
-      });
-      setItems(list);
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+        sortBy,
+      };
+
+      // Apply sort order based on sortBy type
+      if (sortBy === 'updatedAt') req.sortOrder = 'desc';
+      else if (sortBy === 'priority') req.sortOrder = 'asc';
+      else if (sortBy === 'dueDate') req.sortOrder = 'asc';
+
+      // Apply filters only when set
+      if (statusFilter) req.statuses = [statusFilter];
+      if (countryFilter) req.countryCodes = [countryFilter];
+      if (partnerFilter) req.partnerIds = [partnerFilter];
+      if (ownerFilter) req.ownerPersonIds = [ownerFilter];
+      if (memberFilter) req.participantPersonIds = [memberFilter];
+      if (tagFilter.length > 0) req.tags = tagFilter;
+
+      const result = await projectApi.list(req);
+      setItems(result.items);
+      setTotal(result.total);
     } catch (e: unknown) {
       showError((e as { message?: string })?.message ?? '加载失败');
     } finally {
       setLoading(false);
     }
-  }, [showArchived]);
+  }, [showArchived, page, sortBy, statusFilter, countryFilter, partnerFilter, ownerFilter, memberFilter, tagFilter]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  // Reset to page 1 when filters change
   useEffect(() => {
-    partnersApi.list(true).then((ps) => {
-      setPartnerOptions(ps.map((p) => ({ value: p.id, label: p.name })));
-    }).catch(() => {});
-    peopleApi.list(true).then((ps) => {
-      setPersonOptions(ps.map((p) => ({ value: p.id, label: p.display_name })));
-    }).catch(() => {});
-  }, []);
+    setPage(1);
+  }, [statusFilter, countryFilter, partnerFilter, ownerFilter, memberFilter, tagFilter, showArchived, sortBy]);
 
-  useEffect(() => {
-    if (memberFilter) {
-      peopleApi.allProjects(memberFilter).then((projects) => {
-        setMemberProjectIds(projects.map((p) => p.id));
-      }).catch(() => {
-        setMemberProjectIds([]);
-      });
-    } else {
-      setMemberProjectIds([]);
-    }
-  }, [memberFilter]);
-
-  const filtered = items
-    .filter((p) => {
-      if (statusFilter && p.current_status !== statusFilter) return false;
-      if (countryFilter && p.country_code !== countryFilter) return false;
-      if (partnerFilter && p.partner_name !== partnerOptions.find((o) => o.value === partnerFilter)?.label) return false;
-      if (ownerFilter && p.owner_name !== personOptions.find((o) => o.value === ownerFilter)?.label) return false;
-      if (memberFilter && memberProjectIds.length > 0 && !memberProjectIds.includes(p.id)) return false;
-      return true;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'updated_at') {
-        // 按更新时间降序（最新的在前）
-        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-      } else if (sortBy === 'priority') {
-        // 按优先级升序（数字越小优先级越高）
-        return a.priority - b.priority;
-      } else if (sortBy === 'due_date') {
-        // 按截止日升序，null 值排在最后
-        if (!a.due_date && !b.due_date) return 0;
-        if (!a.due_date) return 1;
-        if (!b.due_date) return -1;
-        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-      }
-      return 0;
-    });
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <Stack gap="md" w="100%" pb="xl" style={{ minWidth: 0 }}>
@@ -140,7 +138,7 @@ export function ProjectsList() {
             <Select
               placeholder="合作方"
               clearable
-              data={partnerOptions}
+              data={partnerOptions()}
               value={partnerFilter}
               onChange={setPartnerFilter}
               searchable
@@ -149,7 +147,7 @@ export function ProjectsList() {
             <Select
               placeholder="负责人"
               clearable
-              data={personOptions}
+              data={personOptions()}
               value={ownerFilter}
               onChange={setOwnerFilter}
               searchable
@@ -158,11 +156,20 @@ export function ProjectsList() {
             <Select
               placeholder="参与成员"
               clearable
-              data={personOptions}
+              data={personOptions()}
               value={memberFilter}
               onChange={setMemberFilter}
               searchable
               style={{ minWidth: 120, flex: '1 1 140px' }}
+            />
+            <MultiSelect
+              placeholder="标签"
+              clearable
+              data={allTags.map((t) => ({ value: t, label: t }))}
+              value={tagFilter}
+              onChange={setTagFilter}
+              searchable
+              style={{ minWidth: 140, flex: '1 1 160px' }}
             />
             <Button
               variant={showArchived ? 'filled' : 'light'}
@@ -177,9 +184,9 @@ export function ProjectsList() {
             <Select
               size="xs"
               data={[
-                { value: 'updated_at', label: '更新时间（最新优先）' },
+                { value: 'updatedAt', label: '更新时间（最新优先）' },
                 { value: 'priority', label: '优先级（高优先级在前）' },
-                { value: 'due_date', label: '截止日期（最近优先）' },
+                { value: 'dueDate', label: '截止日期（最近优先）' },
               ]}
               value={sortBy}
               onChange={(v) => v && setSortBy(v as SortBy)}
@@ -194,57 +201,77 @@ export function ProjectsList() {
           <Flex justify="center" py="xl">
             <Loader size="sm" />
           </Flex>
-        ) : filtered.length === 0 ? (
+        ) : items.length === 0 ? (
           <EmptyState
             icon={IconFolder}
             title="暂无项目"
-            description={items.length === 0 ? "还没有创建任何项目。请先创建合作方和成员，然后新建项目。" : "没有符合筛选条件的项目"}
-            actionLabel={items.length === 0 ? "新建项目" : undefined}
-            onAction={items.length === 0 ? () => navigate('/projects/new') : undefined}
+            description={total === 0 && !statusFilter && !countryFilter && !partnerFilter && !ownerFilter && !memberFilter && tagFilter.length === 0 ? "还没有创建任何项目。请先创建合作方和成员，然后新建项目。" : "没有符合筛选条件的项目"}
+            actionLabel={total === 0 && !statusFilter ? "新建项目" : undefined}
+            onAction={total === 0 && !statusFilter ? () => navigate('/projects/new') : undefined}
           />
         ) : (
-          <Table.ScrollContainer minWidth={700}>
-            <Table striped highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>名称</Table.Th>
-                  <Table.Th>状态</Table.Th>
-                  <Table.Th>国家</Table.Th>
-                  <Table.Th>合作方</Table.Th>
-                  <Table.Th>负责人</Table.Th>
-                  <Table.Th>截止日</Table.Th>
-                  <Table.Th>标签</Table.Th>
-                  <Table.Th>操作</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {filtered.map((p) => (
-                  <Table.Tr key={p.id}>
-                    <Table.Td>
-                      <Text fw={500}>{p.name}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Badge size="sm" color={getProjectStatusColor(p.current_status)}>
-                        {p.current_status}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>{p.country_code}</Table.Td>
-                    <Table.Td>{p.partner_name}</Table.Td>
-                    <Table.Td>{p.owner_name}</Table.Td>
-                    <Table.Td>{p.due_date ?? '—'}</Table.Td>
-                    <Table.Td>
-                      {p.tags?.length ? p.tags.join(', ') : '—'}
-                    </Table.Td>
-                    <Table.Td>
-                      <Button size="xs" variant="light" onClick={() => navigate(`/projects/${p.id}`)}>
-                        详情
-                      </Button>
-                    </Table.Td>
+          <>
+            <Table.ScrollContainer minWidth={700}>
+              <Table striped highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>名称</Table.Th>
+                    <Table.Th>状态</Table.Th>
+                    <Table.Th>国家</Table.Th>
+                    <Table.Th>合作方</Table.Th>
+                    <Table.Th>负责人</Table.Th>
+                    <Table.Th>截止日</Table.Th>
+                    <Table.Th>标签</Table.Th>
+                    <Table.Th>操作</Table.Th>
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+                </Table.Thead>
+                <Table.Tbody>
+                  {items.map((p) => (
+                    <Table.Tr key={p.id}>
+                      <Table.Td>
+                        <Text fw={500}>{p.name}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge size="sm" color={getProjectStatusColor(p.current_status)}>
+                          {p.current_status}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>{p.country_code}</Table.Td>
+                      <Table.Td>{p.partner_name}</Table.Td>
+                      <Table.Td>{p.owner_name}</Table.Td>
+                      <Table.Td>{p.due_date ?? '—'}</Table.Td>
+                      <Table.Td>
+                        {p.tags?.length ? p.tags.join(', ') : '—'}
+                      </Table.Td>
+                      <Table.Td>
+                        <Button size="xs" variant="light" onClick={() => navigate(`/projects/${p.id}`)}>
+                          详情
+                        </Button>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+            {totalPages > 1 && (
+              <Group justify="space-between" mt="md" px="sm">
+                <Text size="sm" c="dimmed">
+                  共 {total} 个项目
+                </Text>
+                <Pagination
+                  value={page}
+                  onChange={setPage}
+                  total={totalPages}
+                  size="sm"
+                />
+              </Group>
+            )}
+            {totalPages <= 1 && total > 0 && (
+              <Text size="sm" c="dimmed" ta="right" mt="xs" px="sm">
+                共 {total} 个项目
+              </Text>
+            )}
+          </>
         )}
       </Paper>
     </Stack>

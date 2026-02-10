@@ -128,44 +128,49 @@ pub fn person_get(pool: &DbPool, id: &str) -> Result<PersonDto, AppError> {
 
 pub fn person_update(pool: &DbPool, req: PersonUpdateReq) -> Result<PersonDto, AppError> {
     let now = Utc::now().to_rfc3339();
-    let conn = get_connection(pool);
 
-    let (display_name, email, role, note): (String, String, String, String) = conn
-        .query_row(
-            "SELECT display_name, email, role, note FROM persons WHERE id = ?1",
-            [&req.id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+    {
+        let conn = get_connection(pool);
+
+        let (display_name, email, role, note): (String, String, String, String) = conn
+            .query_row(
+                "SELECT display_name, email, role, note FROM persons WHERE id = ?1",
+                [&req.id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .map_err(|_| AppError::NotFound(format!("person {}", req.id)))?;
+
+        let display_name = req
+            .display_name
+            .as_deref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or(display_name);
+        let email = req.email.unwrap_or(email);
+        let role = req.role.unwrap_or(role);
+        let note = req.note.unwrap_or(note);
+
+        if display_name.is_empty() {
+            return Err(AppError::Validation("display_name is required".into()));
+        }
+
+        conn.execute(
+            "UPDATE persons SET display_name = ?1, email = ?2, role = ?3, note = ?4, updated_at = ?5 WHERE id = ?6",
+            params![&display_name, &email, &role, &note, &now, &req.id],
         )
-        .map_err(|_| AppError::NotFound(format!("person {}", req.id)))?;
-
-    let display_name = req
-        .display_name
-        .as_deref()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or(display_name);
-    let email = req.email.unwrap_or(email);
-    let role = req.role.unwrap_or(role);
-    let note = req.note.unwrap_or(note);
-
-    if display_name.is_empty() {
-        return Err(AppError::Validation("display_name is required".into()));
-    }
-
-    conn.execute(
-        "UPDATE persons SET display_name = ?1, email = ?2, role = ?3, note = ?4, updated_at = ?5 WHERE id = ?6",
-        params![&display_name, &email, &role, &note, &now, &req.id],
-    )
-    .map_err(|e| AppError::Db(e.to_string()))?;
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    } // release conn before calling person_get to avoid deadlock
 
     person_get(pool, &req.id)
 }
 
 pub fn person_deactivate(pool: &DbPool, id: &str) -> Result<PersonDto, AppError> {
     let now = Utc::now().to_rfc3339();
-    let conn = get_connection(pool);
-    conn.execute("UPDATE persons SET is_active = 0, updated_at = ?1 WHERE id = ?2", params![&now, id])
-        .map_err(|e| AppError::Db(e.to_string()))?;
+    {
+        let conn = get_connection(pool);
+        conn.execute("UPDATE persons SET is_active = 0, updated_at = ?1 WHERE id = ?2", params![&now, id])
+            .map_err(|e| AppError::Db(e.to_string()))?;
+    } // release conn before calling person_get to avoid deadlock
     person_get(pool, id)
 }
 

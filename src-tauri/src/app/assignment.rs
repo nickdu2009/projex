@@ -1,12 +1,24 @@
-//! Assignment use cases: add member, end member.
+//! Assignment use cases: add member, end member, list by project.
 
 use crate::error::AppError;
 use crate::infra::get_connection;
 use crate::infra::DbPool;
 use chrono::Utc;
 use rusqlite::params;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+#[derive(Debug, Serialize)]
+pub struct AssignmentItemDto {
+    pub id: String,
+    pub project_id: String,
+    pub person_id: String,
+    pub person_name: String,
+    pub role: String,
+    pub start_at: String,
+    pub end_at: Option<String>,
+    pub created_at: String,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,4 +87,40 @@ pub fn assignment_end_member(pool: &DbPool, req: AssignmentEndReq) -> Result<(),
         return Err(AppError::AssignmentNotActive);
     }
     Ok(())
+}
+
+pub fn assignment_list_by_project(
+    pool: &DbPool,
+    project_id: &str,
+) -> Result<Vec<AssignmentItemDto>, AppError> {
+    let conn = get_connection(pool);
+    let mut stmt = conn
+        .prepare(
+            "SELECT a.id, a.project_id, a.person_id, COALESCE(p.display_name, '?') AS person_name, \
+             a.role, a.start_at, a.end_at, a.created_at \
+             FROM assignments a \
+             LEFT JOIN persons p ON p.id = a.person_id \
+             WHERE a.project_id = ?1 \
+             ORDER BY a.end_at IS NOT NULL, a.start_at DESC",
+        )
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    let rows = stmt
+        .query_map([project_id], |r| {
+            Ok(AssignmentItemDto {
+                id: r.get(0)?,
+                project_id: r.get(1)?,
+                person_id: r.get(2)?,
+                person_name: r.get(3)?,
+                role: r.get(4)?,
+                start_at: r.get(5)?,
+                end_at: r.get(6)?,
+                created_at: r.get(7)?,
+            })
+        })
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r.map_err(|e| AppError::Db(e.to_string()))?);
+    }
+    Ok(out)
 }

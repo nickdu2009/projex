@@ -5,10 +5,11 @@ import dayjs from 'dayjs';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { projectApi } from '../api/projects';
-import { partnersApi } from '../api/partners';
-import { peopleApi } from '../api/people';
 import { COUNTRIES } from '../constants/countries';
 import { showError, showSuccess } from '../utils/errorToast';
+import { usePartnerStore } from '../stores/usePartnerStore';
+import { usePersonStore } from '../stores/usePersonStore';
+import { useTagStore } from '../stores/useTagStore';
 
 function parseDate(s: string | null | undefined): Date | null {
   if (!s || !s.trim()) return null;
@@ -35,17 +36,16 @@ export function ProjectForm() {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [tagsStr, setTagsStr] = useState('');
-  const [partnerOptions, setPartnerOptions] = useState<{ value: string; label: string }[]>([]);
-  const [personOptions, setPersonOptions] = useState<{ value: string; label: string }[]>([]);
+
+  // Zustand stores
+  const { loaded: partnersLoaded, fetch: fetchPartners, activeOptions: partnerOptions } = usePartnerStore();
+  const { loaded: personsLoaded, fetch: fetchPersons, activeOptions: personOptions } = usePersonStore();
+  const { invalidate: invalidateTags } = useTagStore();
 
   useEffect(() => {
-    partnersApi.list(true).then((ps) => {
-      setPartnerOptions(ps.map((p) => ({ value: p.id, label: p.name })));
-    }).catch(() => {});
-    peopleApi.list(true).then((ps) => {
-      setPersonOptions(ps.map((p) => ({ value: p.id, label: p.display_name })));
-    }).catch(() => {});
-  }, []);
+    if (!partnersLoaded) fetchPartners(true);
+    if (!personsLoaded) fetchPersons(true);
+  }, [partnersLoaded, personsLoaded, fetchPartners, fetchPersons]);
 
   useEffect(() => {
     if (!isEdit || !id) {
@@ -101,6 +101,7 @@ export function ProjectForm() {
           tags: tagsStr.split(/[,，]/).map((t) => t.trim()).filter(Boolean),
         });
         showSuccess('已保存');
+        invalidateTags();
         navigate(`/projects/${id}`);
       } else {
         const p = await projectApi.create({
@@ -115,6 +116,7 @@ export function ProjectForm() {
           tags: tagsStr.split(/[,，]/).map((t) => t.trim()).filter(Boolean),
         });
         showSuccess('已创建');
+        invalidateTags();
         navigate(`/projects/${p.id}`);
       }
     } catch (e: unknown) {
@@ -149,7 +151,7 @@ export function ProjectForm() {
           <Select
             label="合作方"
             required
-            data={partnerOptions}
+            data={partnerOptions()}
             value={partnerId}
             onChange={setPartnerId}
             searchable
@@ -160,7 +162,7 @@ export function ProjectForm() {
         <Select
           label="负责人"
           required
-          data={personOptions}
+          data={personOptions()}
           value={ownerPersonId}
           onChange={setOwnerPersonId}
           searchable
