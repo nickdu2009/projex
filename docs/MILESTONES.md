@@ -1,6 +1,6 @@
-# 里程碑与详细需求（MVP）
+# 里程碑与详细需求
 
-本文档定义从当前到可交付 MVP 的**各里程碑**及**每个里程碑的详细需求内容**。与 `PRD.md` 一致，需求变更以 PRD 为准。
+本文档定义各里程碑及每个里程碑的详细需求内容。与 `PRD.md` 一致，需求变更以 PRD 为准。
 
 ---
 
@@ -10,14 +10,16 @@
 flowchart LR
   M1[M1 数据闭环] --> M2[M2 完整 UI]
   M2 --> M3[M3 可交付]
-  M3 --> DONE[MVP 交付]
+  M3 --> M4[M4 同步与改进]
+  M4 --> DONE[当前版本完成]
 ```
 
 | 里程碑 | 目标 | 状态 |
 |--------|------|------|
 | **M1** | 数据闭环：迁移 + 核心命令 + 最简验证 UI | ✅ 已完成 |
 | **M2** | 完整 UI：页面、筛选、规则校验、成员/Partner 视图 | ✅ 已完成 |
-| **M3** | 可交付：导出、打包、错误与空状态体验 | 待做 |
+| **M3** | 可交付：导出、打包、错误与空状态体验 | ✅ 已完成 |
+| **M4** | 同步与改进：S3 多设备同步 + 导入 + 标签筛选 + Zustand | ✅ 已完成 |
 
 ---
 
@@ -142,9 +144,67 @@ flowchart LR
 
 ---
 
-## 依赖关系与建议顺序
+## M4：同步与改进 ✅ 已完成
 
-- **M2 依赖 M1**：M1 已有命令与 DB，M2 在此基础上补全命令（若缺）并做完整 UI。
-- **M3 依赖 M2**：完整流程跑通后再做导出与打包，便于用真实数据验证导出与安装后行为。
+**目标**：支持 S3 多设备同步、数据导入、标签筛选 UI、Zustand 全局状态管理。
 
-建议开发顺序：**M1（已完成）→ M2 → M3**。每完成一阶即可做一次验收再进入下一阶。
+### 详细需求内容
+
+#### 4.1 S3 多设备同步
+- [x] 迁移 `0003_add_sync_support.sql`：新增 `sync_metadata`、`vector_clocks`、`sync_config` 表及变更触发器
+- [x] `VectorClock`：因果一致性检测，LWW（Last Write Wins）冲突解决
+- [x] `DeltaSyncEngine`：基于触发器收集本地变更 → 生成压缩 Delta → 上传 S3；下载远端 Delta → 应用到本地
+- [x] `SnapshotManager`：全量快照创建/恢复/上传/下载，支持 checksum 校验与 gzip 压缩
+- [x] `S3SyncClient`：兼容 AWS S3 / Cloudflare R2 / MinIO，支持自定义 endpoint
+- [x] 前端 `SyncManager` 单例 + `SyncStatusBar` 组件（集成到 Layout footer）
+- [x] Settings 页面：S3 配置表单（bucket/endpoint/accessKey/secretKey）+ 同步/快照/恢复操作按钮
+
+#### 4.2 数据导入
+- [x] 后端 `import_json_string`：解析 JSON，按 FK 依赖顺序写入（persons → partners → projects+tags → assignments → status_history）
+- [x] `INSERT OR IGNORE` 幂等导入，重复 ID 自动跳过
+- [x] Schema 版本校验（仅接受 version=1）
+- [x] 返回 `ImportResult`（各类型导入数量 + 跳过数量）
+- [x] 前端 Settings 页"导入数据"按钮，选择 .json 文件后调用后端导入
+- [x] 5 个 import 集成测试（空库导入、重复跳过、无效 JSON、错误版本、往返一致性）
+
+#### 4.3 项目列表增强
+- [x] 后端 `project_list` 支持 6 种筛选条件（statuses/countryCodes/partnerIds/ownerPersonIds/participantPersonIds/tags）
+- [x] 排序参数支持（sort_by: updatedAt/priority/dueDate, sort_order: asc/desc）
+- [x] 返回 `Page<T>` 结构（含 total/limit/offset）
+- [x] 前端标签多选筛选（`MultiSelect` 组件），从已有项目自动收集标签
+- [x] 前端分页 UI（`Pagination` 组件）
+
+#### 4.4 Zustand 全局状态管理
+- [x] `usePartnerStore`：合作方列表缓存 + `activeOptions()`
+- [x] `usePersonStore`：成员列表缓存 + `activeOptions()`
+- [x] `useTagStore`：全局标签缓存
+- [x] 所有表单页（ProjectForm/PersonForm/PartnerForm）在 CRUD 后自动 invalidate 相关 store
+- [x] Settings 导入数据后 invalidate 所有 store
+
+#### 4.5 其他改进
+- [x] 新增 `assignment_list_by_project` 命令
+- [x] `ConfirmModal` 统一确认弹窗组件
+- [x] 重命名 `export.rs` → `data_transfer.rs`（反映导入导出双向职责）
+
+#### 4.6 测试覆盖
+- [x] 230 个后端集成测试全部通过
+- [x] 12 个测试文件覆盖：assignment、delta、export/import、partner、person、project、snapshot、status_machine、sync_conflict、sync_engine、sync_triggers、vector_clock
+
+#### 4.7 验收
+- [x] 导出 → 导入往返数据一致
+- [x] 标签筛选可组合使用，与后端 SQL `IN` 查询联动
+- [x] 表单页下拉选项从 Zustand store 获取，避免重复 API 请求
+- [x] S3 同步配置可保存，同步/快照/恢复功能可触发
+
+---
+
+## 依赖关系
+
+```mermaid
+flowchart LR
+  M1 --> M2 --> M3 --> M4
+```
+
+- **M2 依赖 M1**：M1 已有命令与 DB，M2 在此基础上补全命令并做完整 UI
+- **M3 依赖 M2**：完整流程跑通后做导出与打包
+- **M4 依赖 M3**：核心 MVP 稳定后扩展同步与改进

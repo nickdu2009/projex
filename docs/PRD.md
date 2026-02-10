@@ -25,7 +25,12 @@
 - 账号/权限/多用户协作
 - 任务/子任务/看板
 - 工时统计（Time Log）
-- 在线同步（iCloud/自建服务）
+
+### 2.3 已实现的扩展功能
+- S3 多设备同步（Delta Sync + Snapshot + Vector Clock，兼容 AWS S3 / Cloudflare R2 / MinIO）
+- 数据导入（幂等导入 JSON，重复 ID 自动跳过）
+- Zustand 全局状态管理（合作方/成员/标签缓存）
+- 标签多选筛选 UI
 
 ## 3. 关键口径（必须遵守）
 - **做过的项目**：成员只要存在任意参与记录（Assignment）即算“做过”
@@ -209,9 +214,10 @@ flowchart LR
 ### 7.6 标签（Tags，可选但推荐）
 - 以项目-标签的关联表实现（查询与筛选更稳定）
 
-### 7.7 备份/导出（必做）
+### 7.7 备份/导出/导入
 - 导出：单文件 JSON（包含 persons/projects/partners/assignments/statusHistory/tags）
-- 导入（可选）：本期可只做导出；若做导入需处理 ID 冲突与幂等
+- 导入：`import_json_string` 幂等导入，`INSERT OR IGNORE` 处理 ID 冲突，按 FK 依赖顺序写入
+- 返回 `ImportResult`（各类型导入数量 + 跳过的重复数量）
 
 ## 8. 数据模型（SQLite 建议）
 > SQL 注释为英文；复杂约束点用中文补充说明。
@@ -360,11 +366,11 @@ ORDER BY h.changed_at DESC;
 - 每个项目必须关联且只能关联 1 个 Partner；Partner 可关联多个项目
 - 备份导出文件包含必要数据且可用于恢复（若本期不做导入，则至少可用于审计/迁移）
 
-## 12. 未来扩展（不影响 MVP 的演进方向）
+## 12. 未来扩展（不影响当前版本的演进方向）
 - 项目审计日志（除状态外的字段变更历史：Partner/国家/Owner/描述等）
 - 里程碑/任务管理
 - 工时与成本统计
-- 多端同步（iCloud / 自建服务）
+- ~~多端同步（iCloud / 自建服务）~~ **已实现**：S3 多设备同步（见 `docs/SYNC_S3_DESIGN.md`）
 
 ## 13. 技术选型与架构（方案 B：Tauri + Vite）
 ### 13.1 技术栈（拍板）
@@ -379,8 +385,9 @@ ORDER BY h.changed_at DESC;
   - ID：`uuid`
   - 时间：`chrono`（ISO-8601）
 - **前端校验**：`zod`（对表单/DTO 做输入校验）
-- **前端状态管理（建议）**：`zustand`（轻量、易维护）
+- **前端状态管理**：`zustand`（已接入，管理合作方/成员/标签缓存）
 - **UI 组件**：Mantine（表单/表格/弹窗效率高）
+- **S3 同步**：`aws-sdk-s3`、`aws-config`、`sha2`、`flate2`（多设备 Delta Sync + Snapshot）
 
 ### 13.2 目标架构（Clean Architecture 落地）
 ```mermaid
@@ -437,6 +444,12 @@ flowchart TB
   - `assignment_list_by_project`
 - **Backup**
   - `export_json`（输出符合 `schemaVersion` 的 JSON）
+  - `import_json`（幂等导入 JSON）
+- **Sync（S3 同步）**
+  - `sync_get_config` / `sync_update_config`
+  - `sync_get_status`
+  - `sync_full`（完整同步：上传本地变更 + 下载远端变更）
+  - `sync_create_snapshot` / `sync_restore_snapshot`
 
 ### 13.6 事务边界（必须）
 - `project_change_status`：**一个事务内**完成：
@@ -744,11 +757,24 @@ type PartnerListReq = { onlyActive?: boolean };
 type PartnerProjectsReq = { partnerId: string };
 ```
 
-##### E) Backup（导出）
-MVP 推荐 **`export_json_string`**：Rust 生成 JSON 字符串返回前端；前端用保存对话框决定落盘路径（更安全）。
+##### E) Backup（导出/导入）
+**导出**：`export_json_string` — Rust 生成 JSON 字符串返回前端；前端用保存对话框决定落盘路径。
 ```ts
 type ExportJsonStringReq = { schemaVersion?: number };
 type ExportJsonStringResp = { schemaVersion: number; exportedAt: string; json: string };
+```
+
+**导入**：`import_json_string` — 幂等导入 JSON，按 FK 依赖顺序写入，重复 ID 自动跳过。
+```ts
+type ImportJsonReq = { json: string };
+type ImportResult = {
+  persons: number;
+  partners: number;
+  projects: number;
+  assignments: number;
+  statusHistory: number;
+  skippedDuplicates: number;
+};
 ```
 
 #### 13.9.5 前端 `invoke()` 包装建议

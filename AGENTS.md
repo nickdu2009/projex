@@ -3,8 +3,8 @@
 本文件用于约束后续自动化/AI 代理在本仓库中的工作方式，确保实现与 `docs/PRD.md` 一致、可维护、可扩展。
 
 ## 项目定位
-- **产品**：个人项目管理工具（Mac 本地）
-- **核心能力**：项目状态机 + 状态时间线（不可变事件日志）、成员视图（做过/当前）、Partner（1:N，项目必须有且创建后不可变更）、Country
+- **产品**：个人项目管理工具（Mac 本地 + S3 多设备同步）
+- **核心能力**：项目状态机 + 状态时间线（不可变事件日志）、成员视图（做过/当前）、Partner（1:N，项目必须有且创建后不可变更）、Country、S3 同步
 - **权威需求来源**：`docs/PRD.md`（任何行为/字段/约束变更必须先改 PRD）
 
 ## 技术栈（拍板）
@@ -13,42 +13,51 @@
 - **Build**：Vite
 - **UI**：Mantine
 - **Validation**：zod（前端 DTO/表单输入预校验）
-- **State**：zustand（建议）
+- **State**：zustand（已接入）
 - **DB**：SQLite（本地文件）
 - **Rust DB**：rusqlite（同步 API，事务清晰）
 - **Rust**：serde/serde_json、thiserror、uuid、chrono
+- **Sync**：aws-sdk-s3、aws-config、sha2、flate2（S3 多设备同步）
 
 ## 总体架构（Clean Architecture）
 ```mermaid
 flowchart TB
-  UI[React/Vite + Mantine] -->|invoke| CMD[Tauri Commands (Rust)]
+  UI[React/Vite + Mantine + Zustand] -->|invoke| CMD[Tauri Commands (Rust)]
   CMD --> APP[Application UseCases (Tx)]
   APP --> DOMAIN[Domain Rules<br/>StatusMachine + Invariants]
-  APP --> INFRA[SQLite Repos + Migrations + Export]
+  APP --> INFRA[SQLite Repos + Migrations + Export/Import]
+  APP --> SYNC[S3 Sync<br/>Delta + Snapshot + VectorClock]
 ```
 
-## 目录结构约定
-> 若目录尚未生成，后续实现应按此结构落地。
+## 目录结构
 
 ```text
 project-management/
   docs/
-    PRD.md
+    PRD.md                   # 权威需求文档
+    MILESTONES.md            # 里程碑跟踪
+    SYNC_S3_DESIGN.md        # S3 同步架构设计
+    SYNC_EXPLAINED.md        # 同步机制详解
   src/                       # Vite React frontend
-    pages/
-    components/
-    stores/                  # zustand stores
-    api/                     # typed invoke wrappers
-    validators/              # zod schemas
+    api/                     # typed invoke wrappers (projects/partners/people/export/sync/assignments)
+    components/              # 共享组件 (ConfirmModal, EmptyState, SyncStatusBar)
+    constants/               # 常量 (countries, PROJECT_STATUSES)
+    pages/                   # 页面组件 (Layout, ProjectsList, ProjectDetail, ProjectForm, ...)
+    stores/                  # zustand stores (usePartnerStore, usePersonStore, useTagStore)
+    sync/                    # 前端同步管理 (SyncManager)
+    utils/                   # 工具函数 (errorToast, statusColor, roleLabel)
+    theme.ts                 # Mantine 主题配置
   src-tauri/                 # Rust backend
-    migrations/              # *.sql migrations
+    migrations/              # SQL 迁移 (0001_init, 0002_add_person_email_role, 0003_add_sync_support)
+    tests/                   # 集成测试 (12 个文件, 230 个测试用例)
     src/
-      commands/              # Tauri command handlers (DTO boundary)
-      app/                   # use cases + transactions
+      app/                   # use cases + transactions (data_transfer, project, person, partner, assignment)
+      commands/              # Tauri command handlers (DTO boundary, 含 sync 命令)
       domain/                # entities + status machine + invariants
-      repo/                  # traits (ports)
-      infra/                 # sqlite impl + export
-      main.rs
+      infra/                 # sqlite impl + migrations
+      sync/                  # S3 同步 (delta_sync, snapshot, vector_clock, s3_client)
+      error.rs               # AppError 统一错误模型
+      lib.rs / main.rs
 ```
 
 ## 关键业务不变量（必须在 Rust 侧强制）
@@ -82,10 +91,9 @@ project-management/
 - 在 Rust 侧启动时执行 migrations（建议 `BEGIN IMMEDIATE`）
 - 使用 `schema_migrations(version, applied_at)` 记录已应用版本
 - 迁移失败必须回滚并阻止继续运行（避免半迁移损坏）
+- 当前迁移文件：`0001_init.sql`、`0002_add_person_email_role.sql`、`0003_add_sync_support.sql`
 
 ## 开发运行（约定命令）
-> 具体脚本在项目脚手架生成后应保持一致。
-
 - **安装依赖**：
   - `npm install`
 - **本地开发（推荐）**：
@@ -93,6 +101,8 @@ project-management/
   - `cargo tauri dev`（带桌面壳）
 - **构建**：
   - `cargo tauri build`
+- **后端测试**：
+  - `cd src-tauri && cargo test`（230 个测试用例）
 
 ## 代码风格与工程规范
 - **命名**：
@@ -100,7 +110,7 @@ project-management/
   - TS：变量/函数 `camelCase`，类型/组件 `PascalCase`
 - **注释语言**：
   - 标准库/常规代码注释：English
-  - 复杂业务规则/不变量说明：中文（解释“为什么”）
+  - 复杂业务规则/不变量说明：中文（解释"为什么"）
 - **边界分层**：
   - UI 不直接拼 SQL
   - Commands 只做 DTO 映射与权限/参数最小校验（无账号体系时主要是输入校验）
@@ -110,8 +120,35 @@ project-management/
 ## 变更规则（重要）
 - 任何改变字段、状态机、错误码、命令契约，都必须同步更新 `docs/PRD.md`
 - 任何新增表/字段，都必须提供 migration，并更新 PRD 的数据模型章节
-- 如需添加“项目非状态字段的审计日志”（例如以后允许更换 Partner），必须先在 PRD 的未来扩展/范围中明确
+- 如需添加"项目非状态字段的审计日志"（例如以后允许更换 Partner），必须先在 PRD 的未来扩展/范围中明确
 
+## S3 同步模块
+
+### 架构
+- **Delta Sync**：基于 SQLite 触发器（`sync_metadata` 表）自动捕获数据变更，上传压缩 Delta 到 S3
+- **Vector Clock**：每个设备维护独立向量时钟，用于因果排序与冲突检测（LWW 策略）
+- **Snapshot**：全量快照备份/恢复，含 gzip 压缩与 SHA-256 checksum 校验
+- **S3 Client**：兼容 AWS S3 / Cloudflare R2 / MinIO，支持自定义 endpoint
+
+### 关键文件
+- `src-tauri/src/sync/` — Rust 同步核心（delta_sync.rs, snapshot.rs, vector_clock.rs, s3_client.rs）
+- `src-tauri/migrations/0003_add_sync_support.sql` — 同步相关表与触发器
+- `src/sync/SyncManager.ts` — 前端同步状态管理（单例模式）
+- `src/components/SyncStatusBar.tsx` — 同步状态展示组件
+- `docs/SYNC_S3_DESIGN.md` — 详细设计文档
+- `docs/SYNC_EXPLAINED.md` — 同步机制中文说明
+
+## 数据导入/导出
+- **导出**：`export_json_string` — 全量导出为 JSON（含 schemaVersion）
+- **导入**：`import_json_string` — 幂等导入（`INSERT OR IGNORE`），按 FK 依赖顺序写入
+- **关键文件**：`src-tauri/src/app/data_transfer.rs`、`src-tauri/src/commands/data_transfer.rs`
+- **前端**：Settings 页面提供导出/导入按钮
+
+## Zustand 状态管理
+- `usePartnerStore` — 合作方下拉选项缓存
+- `usePersonStore` — 成员下拉选项缓存
+- `useTagStore` — 全局标签缓存（从项目中收集）
+- **约定**：CRUD 操作后调用对应 store 的 `invalidate()` 使缓存失效，下次使用时自动重新获取
 
 ---
 
