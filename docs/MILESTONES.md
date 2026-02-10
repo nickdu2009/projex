@@ -11,7 +11,8 @@ flowchart LR
   M1[M1 数据闭环] --> M2[M2 完整 UI]
   M2 --> M3[M3 可交付]
   M3 --> M4[M4 同步与改进]
-  M4 --> DONE[当前版本完成]
+  M4 --> M5[M5 国际化]
+  M5 --> DONE[当前版本完成]
 ```
 
 | 里程碑 | 目标 | 状态 |
@@ -20,6 +21,7 @@ flowchart LR
 | **M2** | 完整 UI：页面、筛选、规则校验、成员/Partner 视图 | ✅ 已完成 |
 | **M3** | 可交付：导出、打包、错误与空状态体验 | ✅ 已完成 |
 | **M4** | 同步与改进：S3 多设备同步 + 导入 + 标签筛选 + Zustand | ✅ 已完成 |
+| **M5** | 国际化：i18n 框架 + 英文/中文翻译 + 语言切换 | ✅ 已完成 |
 
 ---
 
@@ -198,13 +200,47 @@ flowchart LR
 
 ---
 
+## M5：国际化（i18n） ✅ 已完成
+
+**目标**：支持中英文双语 UI，可运行时切换语言。
+
+### 详细需求内容
+
+#### 5.1 i18n 框架搭建
+- [x] 接入 `i18next` + `react-i18next`
+- [x] 创建 `src/i18n.ts` 初始化配置（默认 en，fallback en）
+- [x] 创建 `src/locales/en.json` 和 `src/locales/zh.json` 翻译文件（约 250 个 key）
+- [x] `main.tsx` 中导入 i18n 初始化文件
+
+#### 5.2 全量字符串国际化
+- [x] 所有 16 个前端文件（11 页面 + 2 共享组件 + 3 工具/常量）完成 i18n 改造
+- [x] 所有硬编码中文字符串替换为 `t()` 调用
+- [x] 动态内容使用插值（如 `t('project.list.total', { count })`）
+- [x] 项目状态翻译：`getStatusLabel(status, t)` 基于 `status.*` key
+- [x] 国家名称翻译：`getCountries(lng)` 基于 `i18n-iso-countries` 动态 locale
+- [x] 角色标签翻译：`PERSON_ROLES.label` 存储 i18n key，`getRoleLabel()` 通过 `i18n.t()` 解析
+
+#### 5.3 语言切换
+- [x] Settings 页面新增语言切换区域（`SegmentedControl`：English / 中文）
+- [x] 切换时调用 `i18n.changeLanguage(lng)` 即时生效（无需刷新）
+- [x] `dayjs` locale 同步切换（en/zh-cn）
+- [x] `i18n-iso-countries` 国家名称随语言切换
+
+#### 5.4 验收
+- [x] 默认英文界面，所有页面无残留中文硬编码
+- [x] 切换中文后所有页面正确显示中文
+- [x] `npm run build` 编译无错误
+
+---
+
 ## 依赖关系
 
 ```mermaid
 flowchart LR
-  M1 --> M2 --> M3 --> M4
+  M1 --> M2 --> M3 --> M4 --> M5
 ```
 
 - **M2 依赖 M1**：M1 已有命令与 DB，M2 在此基础上补全命令并做完整 UI
 - **M3 依赖 M2**：完整流程跑通后做导出与打包
 - **M4 依赖 M3**：核心 MVP 稳定后扩展同步与改进
+- **M5 依赖 M4**：稳定功能后做前端国际化

@@ -13,6 +13,7 @@
 - **Build**：Vite
 - **UI**：Mantine
 - **Validation**：zod（前端 DTO/表单输入预校验）
+- **i18n**：i18next + react-i18next（English / 中文）
 - **State**：zustand（已接入）
 - **DB**：SQLite（本地文件）
 - **Rust DB**：rusqlite（同步 API，事务清晰）
@@ -46,6 +47,8 @@ project-management/
     stores/                  # zustand stores (usePartnerStore, usePersonStore, useTagStore)
     sync/                    # 前端同步管理 (SyncManager)
     utils/                   # 工具函数 (errorToast, statusColor, roleLabel)
+    i18n.ts                  # i18next 初始化（默认 en，fallback en）
+    locales/                 # 翻译文件 (en.json, zh.json)
     theme.ts                 # Mantine 主题配置
   src-tauri/                 # Rust backend
     migrations/              # SQL 迁移 (0001_init, 0002_add_person_email_role, 0003_add_sync_support)
@@ -228,6 +231,49 @@ from "export_json" to "export_json_string"
 - `useTagStore` — 全局标签缓存（从项目中收集）
 - **约定**：CRUD 操作后调用对应 store 的 `invalidate()` 使缓存失效，下次使用时自动重新获取
 
+## 国际化（i18n）
+
+### 架构
+- **框架**：`i18next` + `react-i18next`
+- **初始化**：`src/i18n.ts`（`import './i18n'` 在 `main.tsx` 最前面加载）
+- **默认语言**：English（`lng: 'en'`）
+- **翻译文件**：`src/locales/en.json`、`src/locales/zh.json`（约 250 个 key）
+
+### Key 命名规范
+- 格式：`{module}.{page}.{element}`
+- 示例：`project.list.title`、`project.form.namePlaceholder`、`common.save`、`sync.syncing`
+- 通用 key 放在 `common.*` 命名空间（如 `common.save`、`common.edit`、`common.loading`）
+- 状态翻译：`status.BACKLOG`、`status.IN_PROGRESS` 等
+- 角色翻译：`role.tester`、`role.backend_developer` 等
+
+### 使用模式
+```typescript
+// 页面组件中
+import { useTranslation } from 'react-i18next';
+
+export function MyPage() {
+  const { t, i18n } = useTranslation();
+  return <Title>{t('project.list.title')}</Title>;
+}
+```
+
+```typescript
+// 非组件中（如 utils）
+import i18n from '../i18n';
+i18n.t('role.tester');
+```
+
+### 国际化覆盖范围
+- 所有 UI 文字（标签、按钮、提示、表头、占位符、空状态）
+- 项目状态（BACKLOG → Backlog / 待办）：通过 `getStatusLabel(status, t)` 翻译
+- 国家名称：通过 `getCountries(lng)` 动态获取（依赖 `i18n-iso-countries`，注册 en + zh 两套 locale）
+- 角色标签：`PERSON_ROLES` 的 `label` 存储 i18n key，渲染时通过 `t()` 解析
+- 语言切换：Settings 页面 `SegmentedControl`，调用 `i18n.changeLanguage(lng)` 即时生效
+
+### 新增字符串约定
+- 任何新增 UI 字符串，**必须**同时在 `en.json` 和 `zh.json` 中添加对应 key
+- 禁止在组件中硬编码中文或英文文本
+
 ---
 
 ## UI 设计系统（现代化规范）
@@ -275,13 +321,15 @@ borderBottom: '1px solid rgba(0, 0, 0, 0.06)'
 配置位置: `src/utils/statusColor.ts`
 ```typescript
 PROJECT_STATUS_COLORS = {
-  Planning: 'gray',
-  Active: 'green',
-  'On Hold': 'yellow',
-  Completed: 'blue',
-  Cancelled: 'red',
+  BACKLOG: 'gray',
+  IN_PROGRESS: 'blue',
+  ON_HOLD: 'yellow',
+  COMPLETED: 'green',
+  CANCELLED: 'red',
+  ARCHIVED: 'dark',
 }
 ```
+状态翻译使用 `getStatusLabel(status, t)`，key 格式为 `status.{STATUS_VALUE}`（如 `status.BACKLOG`）。
 
 ### 组件设计模式
 
@@ -297,7 +345,7 @@ PROJECT_STATUS_COLORS = {
     gradient={{ from: 'indigo', to: 'violet' }}
     leftSection={<IconPlus size={18} />}
   >
-    新建XXX
+    {t('xxx.list.create')}
   </Button>
   ```
 - 筛选区包裹在 `Paper` 卡片中（带阴影）
@@ -338,7 +386,7 @@ PROJECT_STATUS_COLORS = {
     gradient={{ from: 'indigo', to: 'violet' }}
     leftSection={<IconDeviceFloppy size={18} />}
   >
-    {isEdit ? '保存' : '创建'}
+    {isEdit ? t('common.save') : t('common.create')}
   </Button>
   ```
 - 返回按钮使用 `variant="subtle"`
@@ -445,11 +493,12 @@ padding={{ base: 'xs', sm: 'md' }}
 - `src/index.css` - 全局样式（背景渐变、滚动条美化）
 
 #### 工具函数
-- `src/utils/statusColor.ts` - 状态色彩映射 (`getProjectStatusColor`)
+- `src/utils/statusColor.ts` - 状态色彩映射 (`getProjectStatusColor`) + 状态翻译 (`getStatusLabel`)
 - `src/utils/errorToast.ts` - 错误/成功提示封装
+- `src/utils/roleLabel.ts` - 角色 i18n 翻译 (`getRoleLabel`)
 
 #### 常量
-- `src/constants/countries.ts` - 国家列表、项目状态常量
+- `src/constants/countries.ts` - `getCountries(lng)` 动态国家列表、`PERSON_ROLES`（label 为 i18n key）、`PROJECT_STATUSES`
 
 ### 常见问题解决方案
 
