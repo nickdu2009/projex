@@ -18,12 +18,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { projectApi, type ProjectListItem, type ProjectListReq } from '../api/projects';
-import { COUNTRIES, PROJECT_STATUSES } from '../constants/countries';
+import { getCountries, PROJECT_STATUSES } from '../constants/countries';
 import { showError } from '../utils/errorToast';
 import { usePartnerStore } from '../stores/usePartnerStore';
 import { usePersonStore } from '../stores/usePersonStore';
 import { useTagStore } from '../stores/useTagStore';
-import { getProjectStatusColor } from '../utils/statusColor';
+import { getProjectStatusColor, getStatusLabel } from '../utils/statusColor';
 import { EmptyState } from '../components/EmptyState';
 
 type SortBy = 'updatedAt' | 'priority' | 'dueDate';
@@ -31,7 +31,7 @@ type SortBy = 'updatedAt' | 'priority' | 'dueDate';
 const PAGE_SIZE = 50;
 
 export function ProjectsList() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [items, setItems] = useState<ProjectListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -124,7 +124,7 @@ export function ProjectsList() {
             <Select
               placeholder={t('project.list.statusPlaceholder')}
               clearable
-              data={PROJECT_STATUSES.map((s) => ({ value: s, label: s }))}
+              data={PROJECT_STATUSES.map((s) => ({ value: s, label: getStatusLabel(s, t) }))}
               value={statusFilter}
               onChange={setStatusFilter}
               style={{ minWidth: 120, flex: '1 1 120px' }}
@@ -132,7 +132,7 @@ export function ProjectsList() {
             <Select
               placeholder={t('project.list.countryPlaceholder')}
               clearable
-              data={COUNTRIES.map((c) => ({ value: c.code, label: `${c.code} ${c.name}` }))}
+              data={getCountries(i18n.language).map((c) => ({ value: c.code, label: `${c.code} ${c.name}` }))}
               value={countryFilter}
               onChange={setCountryFilter}
               style={{ minWidth: 120, flex: '1 1 140px' }}
@@ -235,7 +235,7 @@ export function ProjectsList() {
                       </Table.Td>
                       <Table.Td>
                         <Badge size="sm" color={getProjectStatusColor(p.current_status)}>
-                          {p.current_status}
+                          {getStatusLabel(p.current_status, t)}
                         </Badge>
                       </Table.Td>
                       <Table.Td>{p.country_code}</Table.Td>

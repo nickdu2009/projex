@@ -1,20 +1,32 @@
 import type { MantineColor } from '@mantine/core';
+import type { TFunction } from 'i18next';
 
 /**
- * 项目状态色彩映射
- * 统一管理项目状态的Badge颜色
+ * Project status color mapping
+ * Uses the actual status values from the backend
  */
 export const PROJECT_STATUS_COLORS: Record<string, MantineColor> = {
-  Planning: 'gray',
-  Active: 'green',
-  'On Hold': 'yellow',
-  Completed: 'blue',
-  Cancelled: 'red',
+  BACKLOG: 'gray',
+  PLANNED: 'indigo',
+  IN_PROGRESS: 'green',
+  BLOCKED: 'yellow',
+  DONE: 'blue',
+  ARCHIVED: 'dimmed',
 };
 
 /**
- * 根据项目状态获取对应颜色
+ * Get the display color for a project status
  */
 export function getProjectStatusColor(status: string): MantineColor {
   return PROJECT_STATUS_COLORS[status] || 'gray';
+}
+
+/**
+ * Get the translated label for a project status
+ * @param status Raw status value (e.g. 'IN_PROGRESS')
+ * @param t i18next translation function
+ * @returns Translated label (e.g. 'In Progress' or '进行中')
+ */
+export function getStatusLabel(status: string, t: TFunction): string {
+  return t(`status.${status}`, status);
 }

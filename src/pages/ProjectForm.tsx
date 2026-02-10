@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { projectApi } from '../api/projects';
-import { COUNTRIES } from '../constants/countries';
+import { getCountries } from '../constants/countries';
 import { showError, showSuccess } from '../utils/errorToast';
 import { usePartnerStore } from '../stores/usePartnerStore';
 import { usePersonStore } from '../stores/usePersonStore';
@@ -23,7 +23,7 @@ function formatDate(d: Date | null): string | undefined {
 }
 
 export function ProjectForm() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEdit = id && id !== 'new';
@@ -145,7 +145,7 @@ export function ProjectForm() {
         <Select
           label={t('project.form.country')}
           required
-          data={COUNTRIES.map((c) => ({ value: c.code, label: `${c.code} ${c.name}` }))}
+          data={getCountries(i18n.language).map((c) => ({ value: c.code, label: `${c.code} ${c.name}` }))}
           value={countryCode}
           onChange={(v) => v && setCountryCode(v)}
         />

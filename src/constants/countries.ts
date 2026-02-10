@@ -1,7 +1,9 @@
 import countries from 'i18n-iso-countries';
 import enLocale from 'i18n-iso-countries/langs/en.json';
+import zhLocale from 'i18n-iso-countries/langs/zh.json';
 
 countries.registerLocale(enLocale as countries.LocaleData);
+countries.registerLocale(zhLocale as countries.LocaleData);
 
 /** East & Southeast Asia ISO 3166-1 alpha-2, order: East Asia first, then Southeast Asia */
 const EAST_AND_SOUTHEAST_ASIA_CODES = [
@@ -9,12 +11,18 @@ const EAST_AND_SOUTHEAST_ASIA_CODES = [
   'BN', 'KH', 'ID', 'LA', 'MY', 'MM', 'PH', 'SG', 'TH', 'TL', 'VN', // Southeast Asia
 ] as const;
 
-const names = countries.getNames('en') as Record<string, string>;
-
-/** Country list: East & Southeast Asia only, English names from i18n-iso-countries */
-export const COUNTRIES: { code: string; name: string }[] = EAST_AND_SOUTHEAST_ASIA_CODES
-  .filter((code) => names[code])
-  .map((code) => ({ code, name: names[code]! }));
+/**
+ * Get country list in the specified language.
+ * @param lng Language code ('en' | 'zh')
+ * @returns Country list with code and localized name
+ */
+export function getCountries(lng: string): { code: string; name: string }[] {
+  const locale = lng.startsWith('zh') ? 'zh' : 'en';
+  const names = countries.getNames(locale) as Record<string, string>;
+  return EAST_AND_SOUTHEAST_ASIA_CODES
+    .filter((code) => names[code])
+    .map((code) => ({ code, name: names[code]! }));
+}
 
 export const PROJECT_STATUSES = [
   'BACKLOG',

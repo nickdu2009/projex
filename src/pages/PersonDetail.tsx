@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { peopleApi, type PersonDto, type PersonProjectItem } from '../api/people';
 import { showError, showSuccess } from '../utils/errorToast';
 import { getRoleLabel } from '../utils/roleLabel';
-import { getProjectStatusColor } from '../utils/statusColor';
+import { getProjectStatusColor, getStatusLabel } from '../utils/statusColor';
 import { ConfirmModal } from '../components/ConfirmModal';
 
 export function PersonDetail() {
@@ -139,7 +139,7 @@ export function PersonDetail() {
                     </Table.Td>
                     <Table.Td>
                       <Badge size="sm" color={getProjectStatusColor(proj.current_status)}>
-                        {proj.current_status}
+                        {getStatusLabel(proj.current_status, t)}
                       </Badge>
                     </Table.Td>
                     <Table.Td>—</Table.Td>
@@ -175,7 +175,7 @@ export function PersonDetail() {
                     </Table.Td>
                     <Table.Td>
                       <Badge size="sm" color={getProjectStatusColor(proj.current_status)}>
-                        {proj.current_status}
+                        {getStatusLabel(proj.current_status, t)}
                       </Badge>
                     </Table.Td>
                     <Table.Td>{proj.last_involved_at ?? '—'}</Table.Td>

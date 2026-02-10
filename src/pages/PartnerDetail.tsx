@@ -5,7 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { partnersApi, type PartnerDto, type PartnerProjectItem } from '../api/partners';
 import { showError, showSuccess } from '../utils/errorToast';
-import { getProjectStatusColor } from '../utils/statusColor';
+import { getProjectStatusColor, getStatusLabel } from '../utils/statusColor';
 import { ConfirmModal } from '../components/ConfirmModal';
 
 export function PartnerDetail() {
@@ -121,7 +121,7 @@ export function PartnerDetail() {
                     </Table.Td>
                     <Table.Td>
                       <Badge size="sm" color={getProjectStatusColor(proj.current_status)}>
-                        {proj.current_status}
+                        {getStatusLabel(proj.current_status, t)}
                       </Badge>
                     </Table.Td>
                     <Table.Td>—</Table.Td>

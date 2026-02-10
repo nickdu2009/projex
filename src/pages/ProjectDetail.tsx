@@ -22,7 +22,7 @@ import { peopleApi } from '../api/people';
 import { projectApi, type ProjectDetail as ProjectDetailType } from '../api/projects';
 import { PROJECT_STATUSES } from '../constants/countries';
 import { showError, showSuccess } from '../utils/errorToast';
-import { getProjectStatusColor } from '../utils/statusColor';
+import { getProjectStatusColor, getStatusLabel } from '../utils/statusColor';
 
 const NOTE_REQUIRED_TRANSITIONS = [
   'ARCHIVED->BACKLOG',
@@ -172,7 +172,7 @@ export function ProjectDetail() {
               variant="filled"
               style={{ backgroundColor: 'rgba(255,255,255,0.25)' }}
             >
-              {project.current_status}
+              {getStatusLabel(project.current_status, t)}
             </Badge>
           </Flex>
           <Text size="sm" style={{ color: 'rgba(255,255,255,0.9)' }}>{project.description || '—'}</Text>
@@ -286,7 +286,7 @@ export function ProjectDetail() {
             {project.status_history.map((h) => (
               <Table.Tr key={h.id}>
                 <Table.Td>{h.changed_at}</Table.Td>
-                <Table.Td>{h.from_status ?? '—'} → {h.to_status}</Table.Td>
+                <Table.Td>{h.from_status ? getStatusLabel(h.from_status, t) : '—'} → {getStatusLabel(h.to_status, t)}</Table.Td>
                 <Table.Td>{h.changed_by_name ?? '—'}</Table.Td>
                 <Table.Td>{h.note || '—'}</Table.Td>
               </Table.Tr>
@@ -304,7 +304,7 @@ export function ProjectDetail() {
         <Stack>
           <Select
             label={t('project.detail.targetStatus')}
-            data={canTransitionTo.map((s) => ({ value: s, label: s }))}
+            data={canTransitionTo.map((s) => ({ value: s, label: getStatusLabel(s, t) }))}
             value={statusModal?.to ?? null}
             onChange={(v) => v && setStatusModal((m) => ({ ...(m ?? { to: '', note: '' }), to: v }))}
           />

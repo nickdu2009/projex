@@ -30,6 +30,13 @@
   "common.failedToCreate": "Failed to create",
   "common.pickDate": "Pick a date",
 
+  "status.BACKLOG": "Backlog",
+  "status.PLANNED": "Planned",
+  "status.IN_PROGRESS": "In Progress",
+  "status.BLOCKED": "Blocked",
+  "status.DONE": "Done",
+  "status.ARCHIVED": "Archived",
+
   "role.tester": "Tester",
   "role.product_manager": "Product Manager",
   "role.backend_developer": "Backend Developer",
@@ -223,6 +230,10 @@
   "settings.export.assignments": "{{count}} assignments",
   "settings.export.statusHistory": "{{count}} status history entries",
   "settings.export.skippedDuplicates": "({{count}} duplicates skipped)",
+  "settings.language.title": "Language",
+  "settings.language.description": "Choose your preferred display language",
+  "settings.language.en": "English",
+  "settings.language.zh": "中文",
   "settings.about.title": "About",
 
   "sync.syncing": "Syncing...",

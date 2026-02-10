@@ -1,4 +1,4 @@
-import { Button, Group, Paper, Stack, Text, Title, TextInput, PasswordInput, Switch, Divider } from '@mantine/core';
+import { Button, Group, Paper, SegmentedControl, Stack, Text, Title, TextInput, PasswordInput, Switch, Divider } from '@mantine/core';
 import { IconDownload, IconUpload, IconCloud, IconCloudUpload, IconRestore } from '@tabler/icons-react';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -13,7 +13,7 @@ import { useTagStore } from '../stores/useTagStore';
 import type { SyncConfigDto } from '../api/sync';
 
 export function Settings() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -319,6 +319,29 @@ export function Settings() {
               />
             </Group>
           </div>
+        </Stack>
+      </Paper>
+
+      <Divider />
+
+      {/* Language */}
+      <Paper>
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>
+            {t('settings.language.title')}
+          </Text>
+          <Text size="xs" c="dimmed" mb="xs">
+            {t('settings.language.description')}
+          </Text>
+          <SegmentedControl
+            value={i18n.language}
+            onChange={(lng) => i18n.changeLanguage(lng)}
+            data={[
+              { value: 'en', label: t('settings.language.en') },
+              { value: 'zh', label: t('settings.language.zh') },
+            ]}
+            style={{ alignSelf: 'flex-start' }}
+          />
         </Stack>
       </Paper>
 

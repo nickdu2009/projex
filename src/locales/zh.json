@@ -30,6 +30,13 @@
   "common.failedToCreate": "创建失败",
   "common.pickDate": "选择日期",
 
+  "status.BACKLOG": "待办",
+  "status.PLANNED": "已规划",
+  "status.IN_PROGRESS": "进行中",
+  "status.BLOCKED": "已阻塞",
+  "status.DONE": "已完成",
+  "status.ARCHIVED": "已归档",
+
   "role.tester": "测试",
   "role.product_manager": "产品经理",
   "role.backend_developer": "后端开发",
@@ -223,6 +230,10 @@
   "settings.export.assignments": "{{count}} 条参与记录",
   "settings.export.statusHistory": "{{count}} 条状态历史",
   "settings.export.skippedDuplicates": "（跳过 {{count}} 条重复）",
+  "settings.language.title": "语言",
+  "settings.language.description": "选择界面显示语言",
+  "settings.language.en": "English",
+  "settings.language.zh": "中文",
   "settings.about.title": "关于",
 
   "sync.syncing": "同步中...",
