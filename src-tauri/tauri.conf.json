@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Project Management",
-  "version": "0.1.0",
-  "identifier": "com.nickdu.project-management",
+  "productName": "Projex",
+  "version": "1.0.0",
+  "identifier": "com.nickdu.projex",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Project Management",
+        "title": "Projex",
         "width": 1200,
         "height": 800,
         "minWidth": 800,

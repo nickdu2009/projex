@@ -332,7 +332,7 @@ export function Settings() {
             关于
           </Text>
           <Text size="xs" c="dimmed">
-            项目管理工具 v1.0.0
+            Projex v1.0.0
           </Text>
           <Text size="xs" c="dimmed">
             Schema Version: 1

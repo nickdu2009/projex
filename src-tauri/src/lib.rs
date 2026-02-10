@@ -11,7 +11,7 @@ use tauri::Manager;
 
 fn app_data_dir() -> PathBuf {
     let base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
-    base.join("com.nickdu.project-management")
+    base.join("com.nickdu.projex")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

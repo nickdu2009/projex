@@ -63,10 +63,10 @@ export function Layout() {
           <IconBriefcase size={24} style={{ color: '#6366f1' }} />
           <div>
             <Title order={4} style={{ lineHeight: 1.2, marginBottom: 2 }}>
-              项目管理
+              Projex
             </Title>
             <Text size="xs" c="dimmed" style={{ lineHeight: 1 }}>
-              Project Manager
+              Project Management
             </Text>
           </div>
         </Group>
