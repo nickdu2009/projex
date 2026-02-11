@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nicknamedu/projex/releases"><img src="https://img.shields.io/github/v/release/nicknamedu/projex?style=flat-square&color=blue" alt="Release"></a>
+  <a href="https://github.com/nickdu2009/projex/releases"><img src="https://img.shields.io/github/v/release/nickdu2009/projex?style=flat-square&color=blue" alt="Release"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/tests-245%20passed-brightgreen?style=flat-square" alt="Tests">
