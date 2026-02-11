@@ -107,6 +107,14 @@ project-management/
   - `cargo tauri build`
 - **后端测试**：
   - `cd src-tauri && cargo test`（241 个测试用例）
+- **Lint 检查**：
+  - **Rust（Clippy）**：`cd src-tauri && cargo clippy --all-targets --all-features`
+    - 必须零 warning 通过（CI 会阻断）
+    - 常见 lint 类别：`unused_imports`、`manual_flatten`、`type_complexity`、`should_implement_trait`、`deprecated`
+    - 修复后务必 `cargo test` 确认无回归
+  - **前端（ESLint）**：`npm run lint`
+    - 必须零 error 通过
+  - **提交前必须**：同时通过 Clippy + ESLint + 全量测试
 
 ## 代码风格与工程规范
 - **命名**：
