@@ -6,6 +6,9 @@
     "main"
   ],
   "permissions": [
-    "core:default"
+    "core:default",
+    "dialog:allow-save",
+    "fs:default",
+    "fs:allow-write-text-file"
   ]
 }
