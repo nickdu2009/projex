@@ -25,6 +25,15 @@ jobs:
             args: ''
 
     runs-on: ${{ matrix.platform }}
+    env:
+      # Default to ad-hoc signing on macOS to avoid "app is damaged" warnings
+      # when users download the app from the browser without an Apple certificate.
+      # If a real signing identity is available, we will override this via $GITHUB_ENV.
+      APPLE_SIGNING_IDENTITY: ${{ matrix.platform == 'macos-latest' && '-' || '' }}
+      # Optional notarization credentials (recommended for distribution).
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
     steps:
       - name: Checkout repository
@@ -41,6 +50,30 @@ jobs:
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+      - name: Import Apple Developer Certificate (macOS, optional)
+        if: matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          security find-identity -v -p codesigning build.keychain
+
+      - name: Resolve signing identity (macOS)
+        if: matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != ''
+        run: |
+          CERT_INFO=$(security find-identity -v -p codesigning build.keychain | head -n 1)
+          CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
+          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
+          echo "Using signing identity: $CERT_ID"
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
@@ -53,6 +86,11 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS signing & notarization (optional, controlled via repo secrets)
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ env.APPLE_ID }}
+          APPLE_PASSWORD: ${{ env.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
         with:
           tagName: v__VERSION__
           releaseName: 'Projex v__VERSION__'
