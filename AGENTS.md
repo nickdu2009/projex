@@ -20,6 +20,7 @@
 - **Rust DB**：rusqlite（同步 API，事务清晰）
 - **Rust**：serde/serde_json、thiserror、uuid、chrono
 - **Sync**：aws-sdk-s3、aws-config、sha2、flate2（S3 多设备同步）
+- **Logging**：tauri-plugin-log（Rust 侧）+ `@tauri-apps/plugin-log`（前端 JS 绑定）+ 自研 logger 抽象层
 
 ## 总体架构（Clean Architecture）
 ```mermaid
@@ -47,7 +48,7 @@ project-management/
     pages/                   # 页面组件 (Layout, ProjectsList, ProjectDetail, ProjectForm, ...)
     stores/                  # zustand stores (usePartnerStore, usePersonStore, useTagStore)
     sync/                    # 前端同步管理 (SyncManager)
-    utils/                   # 工具函数 (errorToast, statusColor, roleLabel)
+    utils/                   # 工具函数 (errorToast, statusColor, roleLabel, logger)
     i18n.ts                  # i18next 初始化（默认 en，fallback en）
     locales/                 # 翻译文件 (en.json, zh.json)
     theme.ts                 # Mantine 主题配置
@@ -282,6 +283,77 @@ i18n.t('role.tester');
 ### 新增字符串约定
 - 任何新增 UI 字符串，**必须**同时在 `en.json` 和 `zh.json` 中添加对应 key
 - 禁止在组件中硬编码中文或英文文本
+
+## 前端日志规范（Logger）
+
+### 架构
+项目使用统一日志抽象层（`src/utils/logger.ts`），屏蔽平台差异：
+
+```mermaid
+flowchart LR
+    BIZ["业务代码<br/>logger.info / logger.error"] --> DETECT{"window.__TAURI__<br/>运行时检测"}
+    DETECT -->|Tauri 桌面| TAURI["@tauri-apps/plugin-log<br/>→ 统一 Rust log 管道<br/>→ 支持写入文件"]
+    DETECT -->|Web 浏览器| WEB["console.*<br/>→ 可扩展 Sentry/Datadog"]
+```
+
+### 核心规则
+- **禁止**在业务代码中直接使用 `console.log/warn/error/debug`
+- **必须**使用 `import { logger } from '../utils/logger'` 替代
+- `logger.ts` 内部的 `console.*` 是唯一允许的底层调用（作为 fallback 实现）
+
+### 使用方式
+```typescript
+import { logger } from '../utils/logger';
+
+// 信息日志
+logger.info('Sync completed:', result);
+
+// 错误日志
+logger.error('Sync failed:', error);
+
+// 调试日志（开发时使用）
+logger.debug('Current state:', state);
+
+// 警告日志
+logger.warn('Deprecated API called');
+```
+
+### 平台行为差异
+
+| 特性 | Tauri 桌面 | Web 浏览器 |
+|------|-----------|-----------|
+| 输出目标 | tauri-plugin-log（与 Rust log 统一） | console.* |
+| 日志级别过滤 | 支持（Rust 侧配置） | 浏览器 DevTools 过滤 |
+| 写入文件 | 支持 | 不支持（后期可接入远程日志） |
+| Tauri 依赖 | 动态 import，已加载 | 不引入，零开销 |
+
+### 设计要点
+- **运行时检测**：通过 `window.__TAURI__` 判断平台，无需编译时环境变量
+- **动态 import**：`import('@tauri-apps/plugin-log')` 确保 Web 打包不引入 Tauri 依赖
+- **Promise 缓存**：模块只加载一次，后续调用直接复用
+- **优雅降级**：plugin 加载失败自动 fallback 到 console，不阻断业务
+
+### 关键文件
+- `src/utils/logger.ts` — 前端日志抽象层（单例 `logger` 导出）
+- `src-tauri/src/lib.rs` — Rust 侧 `tauri_plugin_log` 注册（当前仅 debug 模式启用）
+- `@tauri-apps/plugin-log` — npm 包（前端 JS 绑定）
+- `tauri-plugin-log` — Cargo 依赖（Rust 侧）
+
+### 扩展指南（未来 Web 版）
+当项目推出 Web 版本时，只需在 `logger.ts` 的 `consoleLogger` 分支中接入远程日志服务：
+```typescript
+// 示例：接入 Sentry
+const webLogger: Logger = {
+  error: (...args) => {
+    console.error('[ERROR]', ...args);
+    Sentry.captureMessage(formatArgs(args), 'error');
+  },
+  // ...
+};
+```
+无需修改任何业务代码。
+
+---
 
 ## 富文本评论（Comments）
 
@@ -551,6 +623,7 @@ padding={{ base: 'xs', sm: 'md' }}
 - `src/utils/statusColor.ts` - 状态色彩映射 (`getProjectStatusColor`) + 状态翻译 (`getStatusLabel`)
 - `src/utils/errorToast.ts` - 错误/成功提示封装
 - `src/utils/roleLabel.ts` - 角色 i18n 翻译 (`getRoleLabel`)
+- `src/utils/logger.ts` - 统一日志抽象层 (`logger.info/warn/error/debug`)，详见「前端日志规范」章节
 
 #### 常量
 - `src/constants/countries.ts` - `getCountries(lng)` 动态国家列表、`PERSON_ROLES`（label 为 i18n key）、`PROJECT_STATUSES`

@@ -6,6 +6,7 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { exportApi } from '../api/export';
 import { showError, showSuccess } from '../utils/errorToast';
+import { logger } from '../utils/logger';
 import { syncManager } from '../sync/SyncManager';
 import { usePartnerStore } from '../stores/usePartnerStore';
 import { usePersonStore } from '../stores/usePersonStore';
@@ -43,7 +44,7 @@ export function Settings() {
       setBucket(config.bucket || '');
       setEndpoint(config.endpoint || '');
     } catch (error: unknown) {
-      console.error('Load sync config failed:', error);
+      logger.error('Load sync config failed:', error);
     }
   };
 
