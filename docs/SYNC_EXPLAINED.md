@@ -237,6 +237,8 @@ pub fn conflicts_with(&self, other: &VectorClock) -> bool {
 
 ### 1. 本地变更追踪
 
+所有业务表（`projects`、`persons`、`partners`、`assignments`、`status_history`、`project_tags`、`project_comments`）的 INSERT/UPDATE/DELETE 操作均通过 SQLite 触发器自动记录到 `sync_metadata` 表。
+
 ```sql
 -- sync_metadata 表记录所有变更
 CREATE TABLE sync_metadata (
@@ -630,7 +632,11 @@ ALTER TABLE partners ADD COLUMN _version INTEGER DEFAULT 1;
 ALTER TABLE assignments ADD COLUMN _version INTEGER DEFAULT 1;
 ALTER TABLE status_history ADD COLUMN _version INTEGER DEFAULT 1;
 
--- 5. 触发器：自动追踪变更
+-- 5. 为项目评论表添加版本和触发器（Migration 0004）
+-- project_comments 表自带 _version 字段和 INSERT/UPDATE/DELETE 触发器
+-- 评论的 CRUD 操作自动纳入 sync_metadata，无需额外代码
+
+-- 6. 触发器：自动追踪变更
 CREATE TRIGGER track_project_insert
 AFTER INSERT ON projects
 FOR EACH ROW
@@ -955,7 +961,36 @@ if conflict_rate > 0.1 {  // 10%
 ✅ 离线工作无障碍
 ```
 
-### 场景 C：冲突场景
+### 场景 C：评论同步
+
+```
+用户: 在 Mac Studio 上为项目添加评论
+
+10:00 - Mac Studio 创建评论
+  ↓ INSERT project_comments
+  ↓ 触发器自动写入 sync_metadata (table='project_comments', op='INSERT')
+  ↓ 1分钟后自动推送到 S3
+  ↓ ✅ 评论 Delta 上传成功
+
+10:02 - MacBook 拉取同步
+  ↓ 下载 Delta
+  ↓ 检测到 project_comments INSERT 操作
+  ↓ 执行 INSERT OR REPLACE
+  ↓ ✅ MacBook 上看到评论
+
+10:10 - MacBook 修改评论（置顶）
+  ↓ UPDATE project_comments SET is_pinned = 1
+  ↓ 触发器记录 UPDATE 到 sync_metadata
+  ↓ 推送到 S3
+
+10:11 - Mac Studio 拉取
+  ↓ 应用 UPDATE
+  ↓ ✅ 评论在 Mac Studio 上也显示为置顶
+
+✅ 评论在所有设备间自动同步
+```
+
+### 场景 D：冲突场景
 
 ```
 两台设备都离线，同时修改同一项目

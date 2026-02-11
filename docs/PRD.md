@@ -74,6 +74,8 @@ erDiagram
   PROJECTS ||--o{ ASSIGNMENTS : includes
   PERSONS  ||--o{ ASSIGNMENTS : participates
   PROJECTS ||--o{ STATUS_HISTORY : changes
+  PROJECTS ||--o{ PROJECT_COMMENTS : has
+  PERSONS  ||--o{ PROJECT_COMMENTS : authors
 
   PARTNERS {
     string id
@@ -115,6 +117,16 @@ erDiagram
     string changed_at
     string changed_by_person_id
     string note
+  }
+
+  PROJECT_COMMENTS {
+    string id
+    string project_id
+    string person_id
+    string content
+    bool   is_pinned
+    string created_at
+    string updated_at
   }
 ```
 
@@ -217,9 +229,10 @@ flowchart LR
 - 以项目-标签的关联表实现（查询与筛选更稳定）
 
 ### 7.7 备份/导出/导入
-- 导出：单文件 JSON（包含 persons/projects/partners/assignments/statusHistory/tags）
+- 导出：单文件 JSON（包含 persons/projects/partners/assignments/statusHistory/comments/tags）
 - 导入：`import_json_string` 幂等导入，`INSERT OR IGNORE` 处理 ID 冲突，按 FK 依赖顺序写入
 - 返回 `ImportResult`（各类型导入数量 + 跳过的重复数量）
+- Schema 版本：version 1（不含 comments）、version 2（含 comments），导入时兼容两个版本
 
 ## 8. 数据模型（SQLite 建议）
 > SQL 注释为英文；复杂约束点用中文补充说明。
@@ -307,6 +320,22 @@ CREATE TABLE project_tags (
   FOREIGN KEY(project_id) REFERENCES projects(id)
 );
 CREATE INDEX idx_project_tags_tag ON project_tags(tag);
+
+-- 项目评论（富文本，Tiptap JSON 格式存储）
+CREATE TABLE project_comments (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  person_id TEXT,              -- 可选：关联操作人
+  content TEXT NOT NULL,       -- Tiptap JSON document
+  is_pinned INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  _version INTEGER DEFAULT 1,  -- 同步版本号
+  FOREIGN KEY(project_id) REFERENCES projects(id),
+  FOREIGN KEY(person_id) REFERENCES persons(id)
+);
+CREATE INDEX idx_comments_project ON project_comments(project_id);
+CREATE INDEX idx_comments_pinned ON project_comments(is_pinned, created_at);
 ```
 
 ### 8.2 关键一致性约束（应用层必须保证）
@@ -766,7 +795,7 @@ type ExportJsonStringReq = { schemaVersion?: number };
 type ExportJsonStringResp = { schemaVersion: number; exportedAt: string; json: string };
 ```
 
-**导入**：`import_json_string` — 幂等导入 JSON，按 FK 依赖顺序写入，重复 ID 自动跳过。
+**导入**：`import_json_string` — 幂等导入 JSON，按 FK 依赖顺序写入，重复 ID 自动跳过。支持 schema version 1（不含 comments）和 version 2（含 comments）。
 ```ts
 type ImportJsonReq = { json: string };
 type ImportResult = {
@@ -775,9 +804,66 @@ type ImportResult = {
   projects: number;
   assignments: number;
   statusHistory: number;
+  comments: number;
   skippedDuplicates: number;
 };
 ```
+
+##### F) Comments（项目评论）
+
+**1) `cmd_comment_create`**
+```ts
+type CommentCreateReq = {
+  projectId: string;
+  personId?: string;   // 可选：关联操作人
+  content: string;     // Tiptap JSON document
+  isPinned?: boolean;  // default false
+};
+
+type CommentDto = {
+  id: string;
+  projectId: string;
+  personId: string | null;
+  personName: string | null; // JOIN persons.display_name
+  content: string;           // Tiptap JSON document
+  isPinned: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+```
+**行为/校验**
+- 必填：`projectId`、`content`
+- 校验 `projectId` 对应的项目存在（否则 `NOT_FOUND`）
+- 若提供 `personId`，校验对应的成员存在（否则 `NOT_FOUND`）
+- 返回创建后的 `CommentDto`（含 `personName`）
+
+**2) `cmd_comment_update`**
+```ts
+type CommentUpdateReq = {
+  id: string;
+  content?: string;    // 更新评论内容
+  personId?: string;   // 更新关联操作人
+  isPinned?: boolean;  // 更新置顶状态
+};
+```
+**行为/校验**
+- 校验评论存在（否则 `NOT_FOUND`）
+- 若提供 `personId`，校验对应的成员存在（否则 `NOT_FOUND`）
+- 仅更新提供的字段（PATCH 语义），自动更新 `updatedAt` 和 `_version`
+
+**3) `cmd_comment_delete`**
+```ts
+type CommentDeleteReq = { id: string };
+// Returns: void
+```
+**行为**：评论不存在则 `NOT_FOUND`
+
+**4) `cmd_comment_list`**
+```ts
+type CommentListReq = { projectId: string };
+// Returns: CommentDto[] — 置顶优先 + 时间倒序
+```
+**排序**：`is_pinned DESC, created_at DESC`
 
 #### 13.9.5 前端 `invoke()` 包装建议
 前端建议封装统一调用器，做：

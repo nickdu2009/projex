@@ -96,6 +96,20 @@ s3://my-project-sync/
 3. 定期快照 → 压缩数据 → 上传完整备份
 ```
 
+### 2.4 同步覆盖的数据表
+
+以下表的 INSERT/UPDATE/DELETE 操作通过 SQLite 触发器自动记录到 `sync_metadata`，纳入 Delta 同步：
+
+| 表名 | 触发器定义位置 | 说明 |
+|------|---------------|------|
+| `projects` | `0003_add_sync_support.sql` | 项目基础数据 |
+| `persons` | `0003_add_sync_support.sql` | 成员数据 |
+| `partners` | `0003_add_sync_support.sql` | 合作方数据 |
+| `assignments` | `0003_add_sync_support.sql` | 成员参与记录 |
+| `status_history` | `0003_add_sync_support.sql` | 状态变更历史 |
+| `project_tags` | `0003_add_sync_support.sql` | 项目标签 |
+| `project_comments` | `0004_add_project_comments.sql` | 项目评论（富文本）|
+
 ---
 
 ## 3. 核心实现
@@ -804,7 +818,11 @@ pub async fn snapshot_restore(
 }
 ```
 
-### 3.6 注册到 Tauri
+### 3.6 同步与评论的自动集成
+
+项目评论（`project_comments`）通过 `0004_add_project_comments.sql` 中定义的 INSERT/UPDATE/DELETE 触发器自动纳入同步流程。评论的 CRUD 操作（`cmd_comment_create`/`cmd_comment_update`/`cmd_comment_delete`）无需额外同步代码——触发器会自动将变更写入 `sync_metadata` 表，由 Delta Sync Engine 统一处理。
+
+### 3.7 注册到 Tauri
 
 ```rust
 // src-tauri/src/lib.rs

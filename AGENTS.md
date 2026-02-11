@@ -53,7 +53,7 @@ project-management/
     theme.ts                 # Mantine 主题配置
   src-tauri/                 # Rust backend
     migrations/              # SQL 迁移 (0001_init, 0002_add_person_email_role, 0003_add_sync_support, 0004_add_project_comments)
-    tests/                   # 集成测试 (13 个文件, 250+ 个测试用例)
+    tests/                   # 集成测试 (13 个文件, 241 个测试用例)
     src/
       app/                   # use cases + transactions (comment, data_transfer, project, person, partner, assignment)
       commands/              # Tauri command handlers (DTO boundary, 含 sync/comment 命令)
@@ -106,7 +106,7 @@ project-management/
 - **构建**：
   - `cargo tauri build`
 - **后端测试**：
-  - `cd src-tauri && cargo test`（230 个测试用例）
+  - `cd src-tauri && cargo test`（241 个测试用例）
 
 ## 代码风格与工程规范
 - **命名**：
