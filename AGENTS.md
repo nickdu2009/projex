@@ -12,6 +12,7 @@
 - **Frontend**：React + TypeScript
 - **Build**：Vite
 - **UI**：Mantine
+- **RichText**：Tiptap + @mantine/tiptap（富文本编辑器）
 - **Validation**：zod（前端 DTO/表单输入预校验）
 - **i18n**：i18next + react-i18next（English / 中文）
 - **State**：zustand（已接入）
@@ -51,11 +52,11 @@ project-management/
     locales/                 # 翻译文件 (en.json, zh.json)
     theme.ts                 # Mantine 主题配置
   src-tauri/                 # Rust backend
-    migrations/              # SQL 迁移 (0001_init, 0002_add_person_email_role, 0003_add_sync_support)
-    tests/                   # 集成测试 (12 个文件, 230 个测试用例)
+    migrations/              # SQL 迁移 (0001_init, 0002_add_person_email_role, 0003_add_sync_support, 0004_add_project_comments)
+    tests/                   # 集成测试 (13 个文件, 250+ 个测试用例)
     src/
-      app/                   # use cases + transactions (data_transfer, project, person, partner, assignment)
-      commands/              # Tauri command handlers (DTO boundary, 含 sync 命令)
+      app/                   # use cases + transactions (comment, data_transfer, project, person, partner, assignment)
+      commands/              # Tauri command handlers (DTO boundary, 含 sync/comment 命令)
       domain/                # entities + status machine + invariants
       infra/                 # sqlite impl + migrations
       sync/                  # S3 同步 (delta_sync, snapshot, vector_clock, s3_client)
@@ -94,7 +95,7 @@ project-management/
 - 在 Rust 侧启动时执行 migrations（建议 `BEGIN IMMEDIATE`）
 - 使用 `schema_migrations(version, applied_at)` 记录已应用版本
 - 迁移失败必须回滚并阻止继续运行（避免半迁移损坏）
-- 当前迁移文件：`0001_init.sql`、`0002_add_person_email_role.sql`、`0003_add_sync_support.sql`
+- 当前迁移文件：`0001_init.sql`、`0002_add_person_email_role.sql`、`0003_add_sync_support.sql`、`0004_add_project_comments.sql`
 
 ## 开发运行（约定命令）
 - **安装依赖**：
@@ -220,8 +221,9 @@ from "export_json" to "export_json_string"
 - `docs/SYNC_EXPLAINED.md` — 同步机制中文说明
 
 ## 数据导入/导出
-- **导出**：`export_json_string` — 全量导出为 JSON（含 schemaVersion）
-- **导入**：`import_json_string` — 幂等导入（`INSERT OR IGNORE`），按 FK 依赖顺序写入
+- **导出**：`export_json_string` — 全量导出为 JSON（含 schemaVersion = 2）
+- **导入**：`import_json_string` — 幂等导入（`INSERT OR IGNORE`），按 FK 依赖顺序写入，支持 schema version 1 和 2
+- **Schema 版本**：version 1（不含 comments）、version 2（含 comments）
 - **关键文件**：`src-tauri/src/app/data_transfer.rs`、`src-tauri/src/commands/data_transfer.rs`
 - **前端**：Settings 页面提供导出/导入按钮
 
@@ -273,6 +275,52 @@ i18n.t('role.tester');
 ### 新增字符串约定
 - 任何新增 UI 字符串，**必须**同时在 `en.json` 和 `zh.json` 中添加对应 key
 - 禁止在组件中硬编码中文或英文文本
+
+## 富文本评论（Comments）
+
+### 架构
+- **数据库**：`project_comments` 表（`0004_add_project_comments.sql`）
+- **存储格式**：Tiptap JSON（`content` 字段存储富文本结构化数据）
+- **功能**：创建、编辑、删除、置顶、关联操作人
+- **同步**：自动纳入 S3 同步（INSERT/UPDATE/DELETE 触发器）
+
+### 数据模型
+```sql
+CREATE TABLE project_comments (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    person_id TEXT,              -- 可选：关联操作人
+    content TEXT NOT NULL,       -- Tiptap JSON document
+    is_pinned INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    _version INTEGER DEFAULT 1,  -- 同步版本号
+    FOREIGN KEY(project_id) REFERENCES projects(id),
+    FOREIGN KEY(person_id) REFERENCES persons(id)
+);
+```
+
+### 后端 API
+- `comment_create(pool, CommentCreateReq)` → `CommentDto`
+- `comment_update(pool, CommentUpdateReq)` → `CommentDto`
+- `comment_delete(pool, id)` → `()`
+- `comment_list_by_project(pool, project_id)` → `Vec<CommentDto>`（置顶优先 + 时间倒序）
+
+### Tauri Commands
+- `cmd_comment_create` / `cmd_comment_update` / `cmd_comment_delete` / `cmd_comment_list`
+
+### 前端组件
+- **RichTextEditor** (`src/components/RichTextEditor.tsx`) — Tiptap 富文本编辑器封装
+  - 扩展：StarterKit、Link、Image（Base64）、TaskList、Table
+  - 工具栏：Bold/Italic、标题、列表、任务清单、表格、图片插入
+- **ProjectComments** (`src/components/ProjectComments.tsx`) — 项目评论区组件
+  - 新增评论：富文本编辑器 + 可选关联操作人
+  - 评论列表：置顶优先、时间倒序、展示编辑时间
+  - 操作：编辑（inline）、删除（确认）、置顶/取消置顶
+- **集成位置**：`ProjectDetail.tsx` 状态时间线之后
+
+### i18n
+- `comment.*` 系列 key（约 20 个）：`comment.title`、`comment.add`、`comment.pin`、`comment.placeholder` 等
 
 ---
 

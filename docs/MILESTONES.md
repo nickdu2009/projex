@@ -12,7 +12,8 @@ flowchart LR
   M2 --> M3[M3 可交付]
   M3 --> M4[M4 同步与改进]
   M4 --> M5[M5 国际化]
-  M5 --> DONE[当前版本完成]
+  M5 --> M6[M6 富文本评论]
+  M6 --> DONE[当前版本完成]
 ```
 
 | 里程碑 | 目标 | 状态 |
@@ -22,6 +23,7 @@ flowchart LR
 | **M3** | 可交付：导出、打包、错误与空状态体验 | ✅ 已完成 |
 | **M4** | 同步与改进：S3 多设备同步 + 导入 + 标签筛选 + Zustand | ✅ 已完成 |
 | **M5** | 国际化：i18n 框架 + 英文/中文翻译 + 语言切换 | ✅ 已完成 |
+| **M6** | 富文本评论：Tiptap 编辑器 + CRUD + 置顶 + 关联操作人 + S3 同步 | ✅ 已完成 |
 
 ---
 
@@ -233,14 +235,71 @@ flowchart LR
 
 ---
 
+## M6：富文本评论 ✅ 已完成
+
+**目标**：为项目添加富文本评论功能，支持格式化文本、图片、表格、任务清单。
+
+### 详细需求内容
+
+#### 6.1 数据库 & 同步
+- [x] Migration `0004_add_project_comments.sql`（表 + 索引 + 同步触发器）
+- [x] `project_comments` 表：id, project_id, person_id, content (JSON), is_pinned, created_at, updated_at, _version
+- [x] 更新 `data_transfer.rs` 导入/导出支持（schema_version 升至 2）
+
+#### 6.2 后端 Rust
+- [x] `app/comment.rs`：CommentDto、CommentCreateReq、CommentUpdateReq、4 个 use case
+- [x] `commands/comment.rs`：4 个 Tauri 命令（create/update/delete/list）
+- [x] 注册命令到 `lib.rs`
+- [x] 集成测试（`test_comment.rs`，20+ 测试用例）
+
+#### 6.3 前端依赖
+- [x] 安装 Tiptap 系列包：`@tiptap/react`、`@tiptap/starter-kit`、`@tiptap/extension-*`（link/image/table/task-list）
+- [x] 安装 `@mantine/tiptap@^7`（兼容 Mantine 7.x）
+
+#### 6.4 前端组件
+- [x] `src/api/comments.ts`：typed invoke wrapper（4 个方法）
+- [x] `src/components/RichTextEditor.tsx`：Tiptap 富文本编辑器封装
+  - 扩展：StarterKit、Link、Image（Base64）、TaskList/TaskItem、Table 系列
+  - 工具栏：粗体/斜体、标题、列表、任务清单、链接、图片上传、表格插入
+  - 可编辑/只读模式切换
+- [x] `src/components/ProjectComments.tsx`：评论区组件
+  - 新增评论表单（富文本编辑器 + 操作人下拉 + 提交按钮）
+  - 评论列表（置顶优先 + 时间倒序）
+  - 每条评论卡片：操作人徽章、时间、置顶标记、编辑时间标注
+  - 操作按钮：编辑（inline 编辑）、删除（确认弹窗）、置顶/取消置顶
+- [x] `ProjectDetail.tsx` 集成 `<ProjectComments projectId={id} />`（状态时间线之后）
+
+#### 6.5 i18n
+- [x] `en.json` / `zh.json` 添加 `comment.*` 系列 key（约 20 个）
+  - title/add/edit/delete/pin/unpin/pinned/confirmDelete/noComments/placeholder
+  - selectPerson/emptyContent/savedSuccess/saveFailed/deletedSuccess/deleteFailed/loadFailed
+  - pinSuccess/unpinSuccess/edited/insertImage/insertTable/table
+
+#### 6.6 文档更新
+- [x] `AGENTS.md`：技术栈、目录结构、迁移列表、数据导入导出、新增「富文本评论」章节
+- [x] `PRD.md`：2.3 已实现扩展功能 + 富文本评论条目
+- [x] `MILESTONES.md`：新增 M6 里程碑 + 依赖关系图
+
+#### 6.7 验收
+- [x] 后端 Rust 编译通过，集成测试全部通过
+- [x] 前端依赖安装成功（使用 `--legacy-peer-deps` 兼容 Mantine 7.x）
+- [x] 项目详情页可创建富文本评论（文本格式、列表、任务清单、图片、表格）
+- [x] 可编辑、删除、置顶评论
+- [x] 可关联操作人到评论
+- [x] 置顶评论显示在列表顶部
+- [x] 中英文双语界面正常显示
+
+---
+
 ## 依赖关系
 
 ```mermaid
 flowchart LR
-  M1 --> M2 --> M3 --> M4 --> M5
+  M1 --> M2 --> M3 --> M4 --> M5 --> M6
 ```
 
 - **M2 依赖 M1**：M1 已有命令与 DB，M2 在此基础上补全命令并做完整 UI
 - **M3 依赖 M2**：完整流程跑通后做导出与打包
 - **M4 依赖 M3**：核心 MVP 稳定后扩展同步与改进
 - **M5 依赖 M4**：稳定功能后做前端国际化
+- **M6 依赖 M5**：国际化完成后添加富文本评论功能

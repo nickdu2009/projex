@@ -1,0 +1,197 @@
+import { RichTextEditor as MantineRTE, Link as TiptapLink } from '@mantine/tiptap';
+import { useEditor, type JSONContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
+import Underline from '@tiptap/extension-underline';
+import Highlight from '@tiptap/extension-highlight';
+import TextAlign from '@tiptap/extension-text-align';
+import Superscript from '@tiptap/extension-superscript';
+import Subscript from '@tiptap/extension-subscript';
+import Image from '@tiptap/extension-image';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
+import { Table } from '@tiptap/extension-table';
+import { TableRow } from '@tiptap/extension-table-row';
+import { TableCell } from '@tiptap/extension-table-cell';
+import { TableHeader } from '@tiptap/extension-table-header';
+import Mention from '@tiptap/extension-mention';
+import { IconPhoto, IconTable } from '@tabler/icons-react';
+import { ActionIcon, FileButton, Tooltip } from '@mantine/core';
+import { useTranslation } from 'react-i18next';
+import { useRef } from 'react';
+import { createMentionSuggestion, type MentionItem } from './mentionSuggestion';
+import { SlashCommand, createSlashSuggestion } from './slashCommand';
+
+interface RichTextEditorProps {
+  content: string | JSONContent;
+  onChange?: (content: JSONContent) => void;
+  editable?: boolean;
+  placeholder?: string;
+  /** List of mentionable people – triggers with "@" */
+  mentionItems?: MentionItem[];
+}
+
+export function RichTextEditor({
+  content,
+  onChange,
+  editable = true,
+  placeholder,
+  mentionItems = [],
+}: RichTextEditorProps) {
+  const { t } = useTranslation();
+
+  // Keep a mutable ref so the suggestion callback always reads fresh data,
+  // even though useEditor captures extensions only on mount.
+  const mentionItemsRef = useRef<MentionItem[]>(mentionItems);
+  mentionItemsRef.current = mentionItems;
+
+  // Stable reference – created once, reads from ref each time
+  const mentionSuggestion = useRef(createMentionSuggestion(mentionItemsRef)).current;
+
+  // Slash command suggestion – uses a getter so t() is always fresh
+  const tRef = useRef(t);
+  tRef.current = t;
+  const slashSuggestion = useRef(createSlashSuggestion(() => tRef.current)).current;
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      TiptapLink,
+      Underline,
+      Highlight,
+      Superscript,
+      Subscript,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      Placeholder.configure({ placeholder: placeholder ?? t('comment.placeholder') }),
+      Image.configure({ inline: true, allowBase64: true }),
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      Mention.configure({
+        HTMLAttributes: { class: 'mention' },
+        suggestion: mentionSuggestion,
+      }),
+      SlashCommand.configure({
+        suggestion: slashSuggestion,
+      }),
+    ],
+    content: typeof content === 'string' ? JSON.parse(content) : content,
+    editable,
+    onUpdate: ({ editor: ed }) => {
+      if (onChange) {
+        onChange(ed.getJSON());
+      }
+    },
+  });
+
+  const handleImageUpload = (file: File | null) => {
+    if (!file || !editor) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      editor.chain().focus().setImage({ src: reader.result as string }).run();
+    };
+    reader.readAsDataURL(file);
+  };
+
+  if (!editor) return null;
+
+  // Read-only mode: render content only, no border/toolbar
+  if (!editable) {
+    return (
+      <MantineRTE editor={editor}>
+        <MantineRTE.Content style={{ border: 'none' }} />
+      </MantineRTE>
+    );
+  }
+
+  return (
+    <MantineRTE editor={editor}>
+      <MantineRTE.Toolbar>
+        {/* Text Formatting */}
+        <MantineRTE.ControlsGroup>
+          <MantineRTE.Bold />
+          <MantineRTE.Italic />
+          <MantineRTE.Underline />
+          <MantineRTE.Strikethrough />
+          <MantineRTE.Highlight />
+          <MantineRTE.Code />
+          <MantineRTE.ClearFormatting />
+        </MantineRTE.ControlsGroup>
+
+        {/* Headings */}
+        <MantineRTE.ControlsGroup>
+          <MantineRTE.H1 />
+          <MantineRTE.H2 />
+          <MantineRTE.H3 />
+          <MantineRTE.H4 />
+        </MantineRTE.ControlsGroup>
+
+        {/* Block Elements */}
+        <MantineRTE.ControlsGroup>
+          <MantineRTE.Blockquote />
+          <MantineRTE.Hr />
+          <MantineRTE.BulletList />
+          <MantineRTE.OrderedList />
+          <MantineRTE.TaskList />
+          <MantineRTE.CodeBlock />
+        </MantineRTE.ControlsGroup>
+
+        {/* Text Alignment */}
+        <MantineRTE.ControlsGroup>
+          <MantineRTE.AlignLeft />
+          <MantineRTE.AlignCenter />
+          <MantineRTE.AlignRight />
+          <MantineRTE.AlignJustify />
+        </MantineRTE.ControlsGroup>
+
+        {/* Links */}
+        <MantineRTE.ControlsGroup>
+          <MantineRTE.Link />
+          <MantineRTE.Unlink />
+        </MantineRTE.ControlsGroup>
+
+        {/* Insert: Image + Table */}
+        <MantineRTE.ControlsGroup>
+          <FileButton onChange={handleImageUpload} accept="image/png,image/jpeg,image/webp,image/gif">
+            {(props) => (
+              <Tooltip label={t('comment.insertImage')} withArrow>
+                <ActionIcon {...props} variant="default" size={26}>
+                  <IconPhoto size={16} stroke={1.5} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+          </FileButton>
+
+          <Tooltip label={t('comment.insertTable')} withArrow>
+            <ActionIcon
+              variant="default"
+              size={26}
+              onClick={() =>
+                editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+              }
+            >
+              <IconTable size={16} stroke={1.5} />
+            </ActionIcon>
+          </Tooltip>
+        </MantineRTE.ControlsGroup>
+
+        {/* Super/Subscript */}
+        <MantineRTE.ControlsGroup>
+          <MantineRTE.Superscript />
+          <MantineRTE.Subscript />
+        </MantineRTE.ControlsGroup>
+
+        {/* Undo/Redo */}
+        <MantineRTE.ControlsGroup>
+          <MantineRTE.Undo />
+          <MantineRTE.Redo />
+        </MantineRTE.ControlsGroup>
+      </MantineRTE.Toolbar>
+
+      <MantineRTE.Content />
+    </MantineRTE>
+  );
+}

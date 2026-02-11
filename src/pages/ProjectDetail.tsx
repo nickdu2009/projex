@@ -23,6 +23,7 @@ import { projectApi, type ProjectDetail as ProjectDetailType } from '../api/proj
 import { PROJECT_STATUSES } from '../constants/countries';
 import { showError, showSuccess } from '../utils/errorToast';
 import { getProjectStatusColor, getStatusLabel } from '../utils/statusColor';
+import { ProjectComments } from '../components/ProjectComments';
 
 const NOTE_REQUIRED_TRANSITIONS = [
   'ARCHIVED->BACKLOG',
@@ -295,6 +296,8 @@ export function ProjectDetail() {
         </Table>
         </Table.ScrollContainer>
       </Paper>
+
+      <ProjectComments projectId={id} />
 
       <Modal
         opened={!!statusModal}

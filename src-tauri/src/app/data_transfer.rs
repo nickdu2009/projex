@@ -16,6 +16,7 @@ pub struct ExportRoot {
     pub projects: Vec<ExportProject>,
     pub assignments: Vec<ExportAssignment>,
     pub status_history: Vec<ExportStatusHistory>,
+    pub comments: Vec<ExportComment>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -85,6 +86,18 @@ pub struct ExportStatusHistory {
     pub note: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportComment {
+    pub id: String,
+    pub project_id: String,
+    pub person_id: Option<String>,
+    pub content: String,
+    pub is_pinned: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportResult {
@@ -93,12 +106,13 @@ pub struct ImportResult {
     pub projects: usize,
     pub assignments: usize,
     pub status_history: usize,
+    pub comments: usize,
     pub skipped_duplicates: usize,
 }
 
 /// Export all data as JSON string
 pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result<String, AppError> {
-    let schema_version = 1; // Current schema version
+    let schema_version = 2; // Current schema version (updated for comments support)
     let exported_at = Utc::now().to_rfc3339();
 
     let conn = get_connection(pool);
@@ -226,6 +240,26 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
         });
     }
 
+    // 6. Export comments
+    let mut comments = Vec::new();
+    let mut stmt = conn
+        .prepare("SELECT id, project_id, person_id, content, is_pinned, created_at, updated_at FROM project_comments ORDER BY created_at DESC")
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    let mut rows = stmt
+        .query([])
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    while let Some(row) = rows.next().map_err(|e| AppError::Db(e.to_string()))? {
+        comments.push(ExportComment {
+            id: row.get(0)?,
+            project_id: row.get(1)?,
+            person_id: row.get(2)?,
+            content: row.get(3)?,
+            is_pinned: row.get::<_, i32>(4)? != 0,
+            created_at: row.get(5)?,
+            updated_at: row.get(6)?,
+        });
+    }
+
     let export_root = ExportRoot {
         schema_version,
         exported_at,
@@ -234,6 +268,7 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
         projects,
         assignments,
         status_history,
+        comments,
     };
 
     serde_json::to_string_pretty(&export_root).map_err(|e| AppError::Db(format!("JSON serialization failed: {}", e)))
@@ -244,9 +279,10 @@ pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, App
     let root: ExportRoot = serde_json::from_str(json)
         .map_err(|e| AppError::Validation(format!("Invalid JSON: {}", e)))?;
 
-    if root.schema_version != 1 {
+    // Support both schema version 1 (without comments) and 2 (with comments)
+    if root.schema_version < 1 || root.schema_version > 2 {
         return Err(AppError::Validation(format!(
-            "Unsupported schema version: {} (expected 1)",
+            "Unsupported schema version: {} (expected 1 or 2)",
             root.schema_version
         )));
     }
@@ -319,6 +355,16 @@ pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, App
         if changed > 0 { history_count += 1; } else { skipped += 1; }
     }
 
+    // 6. Import comments (schema version 2 only)
+    let mut comments_count = 0usize;
+    for c in &root.comments {
+        let changed = tx.execute(
+            "INSERT OR IGNORE INTO project_comments (id, project_id, person_id, content, is_pinned, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![c.id, c.project_id, c.person_id, c.content, c.is_pinned as i32, c.created_at, c.updated_at],
+        ).map_err(|e| AppError::Db(e.to_string()))?;
+        if changed > 0 { comments_count += 1; } else { skipped += 1; }
+    }
+
     tx.commit().map_err(|e| AppError::Db(e.to_string()))?;
 
     Ok(ImportResult {
@@ -327,6 +373,7 @@ pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, App
         projects: projects_count,
         assignments: assignments_count,
         status_history: history_count,
+        comments: comments_count,
         skipped_duplicates: skipped,
     })
 }

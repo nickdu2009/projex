@@ -45,3 +45,33 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.18);
 }
+
+/* Rich text editor – ensure editable area has usable height */
+.mantine-RichTextEditor-root .mantine-RichTextEditor-content .tiptap {
+  min-height: 100px;
+}
+/* Remove padding/min-height for read-only (borderless) mode */
+.mantine-RichTextEditor-root .mantine-RichTextEditor-content[style*="border: none"] .tiptap {
+  min-height: unset;
+}
+
+/* @mention chip style in rich text editor */
+.mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--mantine-color-indigo-0);
+  color: var(--mantine-color-indigo-7);
+  font-weight: 600;
+  font-size: 0.9em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.mention::before {
+  content: '@';
+  font-weight: 400;
+  opacity: 0.6;
+}

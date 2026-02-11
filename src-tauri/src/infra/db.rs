@@ -40,6 +40,7 @@ const MIGRATIONS: &[(i32, &str)] = &[
     (1, include_str!("../../migrations/0001_init.sql")),
     (2, include_str!("../../migrations/0002_add_person_email_role.sql")),
     (3, include_str!("../../migrations/0003_add_sync_support.sql")),
+    (4, include_str!("../../migrations/0004_add_project_comments.sql")),
 ];
 
     for (version, sql) in MIGRATIONS {

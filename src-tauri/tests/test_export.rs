@@ -18,13 +18,14 @@ fn export_empty_db_returns_valid_json() {
     let json_str = export_json_string(&pool, None).unwrap();
     let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
-    assert_eq!(json["schemaVersion"], 1);
+    assert_eq!(json["schemaVersion"], 2);
     assert!(!json["exportedAt"].as_str().unwrap().is_empty());
     assert_eq!(json["persons"].as_array().unwrap().len(), 0);
     assert_eq!(json["partners"].as_array().unwrap().len(), 0);
     assert_eq!(json["projects"].as_array().unwrap().len(), 0);
     assert_eq!(json["assignments"].as_array().unwrap().len(), 0);
     assert_eq!(json["statusHistory"].as_array().unwrap().len(), 0);
+    assert_eq!(json["comments"].as_array().unwrap().len(), 0);
 }
 
 #[test]
@@ -256,7 +257,7 @@ fn import_invalid_json_returns_error() {
 #[test]
 fn import_wrong_schema_version_returns_error() {
     let pool = init_test_db();
-    let json = r#"{"schemaVersion":99,"exportedAt":"2026-01-01","persons":[],"partners":[],"projects":[],"assignments":[],"statusHistory":[]}"#;
+    let json = r#"{"schemaVersion":99,"exportedAt":"2026-01-01","persons":[],"partners":[],"projects":[],"assignments":[],"statusHistory":[],"comments":[]}"#;
     let result = import_json_string(&pool, json);
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().code(), "VALIDATION_ERROR");

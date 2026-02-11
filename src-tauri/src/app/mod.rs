@@ -1,6 +1,7 @@
 //! Application use cases and transactions.
 
 mod assignment;
+mod comment;
 mod data_transfer;
 mod partner;
 mod person;
@@ -9,6 +10,10 @@ mod project;
 pub use assignment::{
     assignment_add_member, assignment_end_member, assignment_list_by_project, AssignmentAddReq,
     AssignmentEndReq, AssignmentItemDto,
+};
+pub use comment::{
+    comment_create, comment_delete, comment_list_by_project, comment_update, CommentCreateReq,
+    CommentDto, CommentUpdateReq,
 };
 pub use data_transfer::{export_json_string, import_json_string, ImportResult};
 pub use partner::{
