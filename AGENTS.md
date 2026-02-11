@@ -164,7 +164,6 @@ project-management/
 
 #### 页脚 `<footer>`
 - 可选
-- `Co-authored-by: Name <email>` — 协作者
 - `BREAKING CHANGE: <description>` — 破坏性变更
 
 ### 示例
