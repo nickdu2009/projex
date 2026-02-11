@@ -56,6 +56,10 @@ export class SyncManager {
     return await syncApi.getConfig();
   }
 
+  async revealSecretKey(): Promise<string> {
+    return await syncApi.revealSecretKey();
+  }
+
   /**
    * 更新同步配置
    */
@@ -63,8 +67,8 @@ export class SyncManager {
     enabled: boolean;
     bucket: string;
     endpoint?: string;
-    accessKey: string;
-    secretKey: string;
+    accessKey?: string;
+    secretKey?: string;
   }): Promise<void> {
     await syncApi.updateConfig({
       enabled: config.enabled,

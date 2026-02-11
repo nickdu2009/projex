@@ -74,6 +74,7 @@ pub fn run() {
             commands::project::cmd_project_change_status,
             commands::sync::cmd_sync_get_config,
             commands::sync::cmd_sync_update_config,
+            commands::sync::cmd_sync_reveal_secret_key,
             commands::sync::cmd_sync_get_status,
             commands::sync::cmd_sync_full,
             commands::sync::cmd_sync_create_snapshot,

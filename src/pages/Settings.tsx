@@ -1,5 +1,5 @@
-import { Button, Group, Paper, SegmentedControl, Stack, Text, Title, TextInput, PasswordInput, Switch, Divider } from '@mantine/core';
-import { IconDownload, IconUpload, IconCloud, IconCloudUpload, IconRestore } from '@tabler/icons-react';
+import { ActionIcon, Button, Group, Paper, SegmentedControl, Stack, Text, Title, TextInput, Switch, Divider } from '@mantine/core';
+import { IconDownload, IconUpload, IconCloud, IconCloudUpload, IconRestore, IconEye, IconEyeOff, IconEdit } from '@tabler/icons-react';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { save } from '@tauri-apps/plugin-dialog';
@@ -12,6 +12,7 @@ import { usePartnerStore } from '../stores/usePartnerStore';
 import { usePersonStore } from '../stores/usePersonStore';
 import { useTagStore } from '../stores/useTagStore';
 import type { SyncConfigDto } from '../api/sync';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 export function Settings() {
   const { t, i18n } = useTranslation();
@@ -26,7 +27,14 @@ export function Settings() {
   const [bucket, setBucket] = useState('');
   const [endpoint, setEndpoint] = useState('');
   const [accessKey, setAccessKey] = useState('');
+  const [syncConfigEditing, setSyncConfigEditing] = useState(false);
   const [secretKey, setSecretKey] = useState('');
+  const [secretKeySaved, setSecretKeySaved] = useState(false);
+  const [secretKeyMasked, setSecretKeyMasked] = useState<string | null>(null);
+  const [secretKeyRevealed, setSecretKeyRevealed] = useState(false);
+  const [secretKeyEditBaseline, setSecretKeyEditBaseline] = useState<string | null>(null);
+  const [revealSecretOpened, setRevealSecretOpened] = useState(false);
+  const [revealingSecret, setRevealingSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [snapshotting, setSnapshotting] = useState(false);
@@ -43,8 +51,39 @@ export function Settings() {
       setSyncEnabled(config.enabled);
       setBucket(config.bucket || '');
       setEndpoint(config.endpoint || '');
+      setAccessKey(config.access_key || '');
+      setSecretKey('');
+      setSecretKeySaved(Boolean(config.has_secret_key));
+      setSecretKeyMasked(config.secret_key_masked || null);
+      setSecretKeyRevealed(false);
+      setSecretKeyEditBaseline(null);
     } catch (error: unknown) {
       logger.error('Load sync config failed:', error);
+    }
+  };
+
+  const handleToggleRevealSecretKey = () => {
+    if (secretKeyRevealed) {
+      setSecretKey('');
+      setSecretKeyRevealed(false);
+      setSecretKeyEditBaseline(null);
+      return;
+    }
+    setRevealSecretOpened(true);
+  };
+
+  const handleConfirmRevealSecretKey = async () => {
+    setRevealingSecret(true);
+    try {
+      const value = await syncManager.revealSecretKey();
+      setSecretKey(value);
+      setSecretKeyRevealed(true);
+      setSecretKeyEditBaseline(null);
+      setRevealSecretOpened(false);
+    } catch (error: unknown) {
+      showError((error as { message?: string })?.message ?? t('settings.sync.revealSecretFailed'));
+    } finally {
+      setRevealingSecret(false);
     }
   };
 
@@ -108,20 +147,54 @@ export function Settings() {
   const handleSaveSyncConfig = async () => {
     setSaving(true);
     try {
+      const hasExistingAccessKey = Boolean(syncConfig?.access_key);
+      const baseline = (secretKeyEditBaseline ?? '').trim();
+      const current = secretKey.trim();
+      const shouldSendSecretKey = syncConfigEditing && current !== '' && current !== baseline;
       await syncManager.updateConfig({
         enabled: syncEnabled,
         bucket,
         endpoint: endpoint || undefined,
-        accessKey,
-        secretKey,
+        // Avoid overwriting stored credentials with empty strings.
+        accessKey: accessKey.trim() === '' && hasExistingAccessKey ? undefined : accessKey,
+        // Only send secret key when user is explicitly editing it.
+        secretKey: shouldSendSecretKey ? secretKey : undefined,
       });
       showSuccess(t('settings.sync.configSaved'));
       await loadSyncConfig();
+      setSyncConfigEditing(false);
     } catch (e: unknown) {
       showError((e as { message?: string })?.message ?? t('settings.sync.configSaveFailed'));
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleEnterSyncConfigEdit = async () => {
+    setSyncConfigEditing(true);
+    // Requirement: show Secret Key in plaintext while editing.
+    // If a secret key exists, reveal it immediately when entering edit mode.
+    if (secretKeySaved) {
+      setRevealingSecret(true);
+      try {
+        const value = await syncManager.revealSecretKey();
+        const v = value.trim();
+        setSecretKey(v);
+        setSecretKeyEditBaseline(v);
+        setSecretKeyRevealed(true);
+      } catch (error: unknown) {
+        showError((error as { message?: string })?.message ?? t('settings.sync.revealSecretFailed'));
+      } finally {
+        setRevealingSecret(false);
+      }
+    } else {
+      setSecretKeyEditBaseline('');
+    }
+  };
+
+  const handleCancelSyncConfigEdit = async () => {
+    setSyncConfigEditing(false);
+    await loadSyncConfig();
   };
 
   const handleSync = async () => {
@@ -163,6 +236,16 @@ export function Settings() {
   return (
     <Stack gap="md" w="100%" pb="xl" style={{ minWidth: 0 }}>
       <Title order={3}>{t('settings.title')}</Title>
+      <ConfirmModal
+        opened={revealSecretOpened}
+        onClose={() => setRevealSecretOpened(false)}
+        onConfirm={handleConfirmRevealSecretKey}
+        title={t('settings.sync.revealSecretTitle')}
+        message={t('settings.sync.revealSecretMessage')}
+        confirmLabel={t('settings.sync.revealSecretConfirm')}
+        confirmColor="orange"
+        loading={revealingSecret}
+      />
 
       {/* S3 Sync Configuration */}
       <Paper>
@@ -175,6 +258,7 @@ export function Settings() {
               <Switch
                 checked={syncEnabled}
                 onChange={(e) => setSyncEnabled(e.currentTarget.checked)}
+                disabled={!syncConfigEditing}
               />
             </Group>
             <Text size="xs" c="dimmed" mb="md">
@@ -194,6 +278,7 @@ export function Settings() {
             value={bucket}
             onChange={(e) => setBucket(e.currentTarget.value)}
             required
+            readOnly={!syncConfigEditing}
           />
 
           <TextInput
@@ -202,6 +287,7 @@ export function Settings() {
             description={t('settings.sync.endpointDesc')}
             value={endpoint}
             onChange={(e) => setEndpoint(e.currentTarget.value)}
+            readOnly={!syncConfigEditing}
           />
 
           <TextInput
@@ -210,25 +296,90 @@ export function Settings() {
             value={accessKey}
             onChange={(e) => setAccessKey(e.currentTarget.value)}
             required
+            readOnly={!syncConfigEditing}
           />
 
-          <PasswordInput
-            label={t('settings.sync.secretKey')}
-            placeholder={t('settings.sync.secretKeyPlaceholder')}
-            value={secretKey}
-            onChange={(e) => setSecretKey(e.currentTarget.value)}
-            required
-          />
+          {syncConfigEditing && (
+            <TextInput
+              label={t('settings.sync.secretKey')}
+              placeholder={t('settings.sync.secretKeyPlaceholder')}
+              value={secretKey}
+              onChange={(e) => setSecretKey(e.currentTarget.value)}
+              required={!secretKeySaved}
+            />
+          )}
 
-          <Group>
-            <Button
-              variant="gradient"
-              gradient={{ from: 'cyan', to: 'blue' }}
-              onClick={handleSaveSyncConfig}
-              loading={saving}
-            >
-              {t('settings.sync.saveConfig')}
-            </Button>
+          {!syncConfigEditing && secretKeySaved && !secretKeyRevealed && (
+            <TextInput
+              label={t('settings.sync.secretKey')}
+              value={secretKeyMasked ?? t('common.saved')}
+              readOnly
+              rightSection={
+                <Group gap={4}>
+                  <ActionIcon
+                    variant="subtle"
+                    onClick={handleToggleRevealSecretKey}
+                    aria-label={t('settings.sync.showSecret')}
+                  >
+                    <IconEye size={16} />
+                  </ActionIcon>
+                </Group>
+              }
+            />
+          )}
+
+          {!syncConfigEditing && secretKeySaved && secretKeyRevealed && (
+            <TextInput
+              label={t('settings.sync.secretKey')}
+              value={secretKey}
+              readOnly
+              rightSection={
+                <ActionIcon
+                  variant="subtle"
+                  onClick={handleToggleRevealSecretKey}
+                  aria-label={t('settings.sync.hideSecret')}
+                >
+                  <IconEyeOff size={16} />
+                </ActionIcon>
+              }
+            />
+          )}
+
+          {!syncConfigEditing && !secretKeySaved && (
+            <TextInput
+              label={t('settings.sync.secretKey')}
+              placeholder={t('settings.sync.secretKeyPlaceholder')}
+              value={secretKey}
+              onChange={(e) => setSecretKey(e.currentTarget.value)}
+              required={!secretKeySaved}
+              readOnly
+            />
+          )}
+
+          <Group justify="flex-start" mt="xs">
+            {!syncConfigEditing ? (
+              <Button
+                variant="light"
+                leftSection={<IconEdit size={16} />}
+                onClick={handleEnterSyncConfigEdit}
+              >
+                {t('common.edit')}
+              </Button>
+            ) : (
+              <>
+                <Button variant="subtle" onClick={handleCancelSyncConfigEdit} disabled={saving}>
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  variant="gradient"
+                  gradient={{ from: 'cyan', to: 'blue' }}
+                  onClick={handleSaveSyncConfig}
+                  loading={saving}
+                >
+                  {t('common.save')}
+                </Button>
+              </>
+            )}
           </Group>
         </Stack>
       </Paper>

@@ -12,8 +12,8 @@ pub struct SyncConfigReq {
     pub enabled: bool,
     pub bucket: String,
     pub endpoint: Option<String>,
-    pub access_key: String,
-    pub secret_key: String,
+    pub access_key: Option<String>,
+    pub secret_key: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -21,6 +21,9 @@ pub struct SyncConfigResp {
     pub enabled: bool,
     pub bucket: Option<String>,
     pub endpoint: Option<String>,
+    pub access_key: Option<String>,
+    pub has_secret_key: bool,
+    pub secret_key_masked: Option<String>,
     pub device_id: String,
     pub last_sync: Option<String>,
 }
@@ -46,12 +49,26 @@ pub fn cmd_sync_get_config(pool: State<DbPool>) -> Result<SyncConfigResp, AppErr
     let enabled = get_config_value(&conn, "sync_enabled")? == "1";
     let bucket = get_config_value(&conn, "s3_bucket").ok();
     let endpoint = get_config_value(&conn, "s3_endpoint").ok();
+    let access_key = get_config_value(&conn, "s3_access_key").ok();
+    let secret_key = get_config_value(&conn, "s3_secret_key").ok();
+    let has_secret_key = secret_key
+        .as_deref()
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let secret_key_masked = secret_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(mask_credential);
     let last_sync = get_config_value(&conn, "last_sync").ok();
 
     Ok(SyncConfigResp {
         enabled,
         bucket,
         endpoint,
+        access_key,
+        has_secret_key,
+        secret_key_masked,
         device_id,
         last_sync,
     })
@@ -73,8 +90,15 @@ pub fn cmd_sync_update_config(pool: State<DbPool>, req: SyncConfigReq) -> Result
         set_config_value(&conn, "s3_endpoint", &endpoint)?;
     }
 
-    set_config_value(&conn, "s3_access_key", &req.access_key)?;
-    set_config_value(&conn, "s3_secret_key", &req.secret_key)?;
+    // Security/UX: do not overwrite existing credentials with empty strings.
+    // - If frontend omits the field, keep existing value.
+    // - If frontend sends Some("") (unlikely), also keep existing value.
+    if let Some(access_key) = req.access_key.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        set_config_value(&conn, "s3_access_key", access_key)?;
+    }
+    if let Some(secret_key) = req.secret_key.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        set_config_value(&conn, "s3_secret_key", secret_key)?;
+    }
 
     Ok("Sync configuration updated".to_string())
 }
@@ -320,6 +344,24 @@ pub async fn cmd_sync_restore_snapshot(pool: State<'_, DbPool>) -> Result<String
     Ok(format!("Restored from snapshot: {}", snapshot.checksum))
 }
 
+/// Reveal the stored secret key (use with caution).
+#[tauri::command]
+pub fn cmd_sync_reveal_secret_key(pool: State<DbPool>) -> Result<String, AppError> {
+    let conn = pool
+        .inner()
+        .0
+        .lock()
+        .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+
+    let secret_key = get_config_value(&conn, "s3_secret_key")?;
+    let secret_key = secret_key.trim().to_string();
+    if secret_key.is_empty() {
+        return Err(AppError::Db("Secret key is not set".to_string()));
+    }
+
+    Ok(secret_key)
+}
+
 // Helper functions
 
 fn get_config_value(conn: &Connection, key: &str) -> Result<String, AppError> {
@@ -339,4 +381,29 @@ fn set_config_value(conn: &Connection, key: &str, value: &str) -> Result<(), App
     .map_err(|e: rusqlite::Error| AppError::Db(e.to_string()))?;
 
     Ok(())
+}
+
+fn mask_credential(value: &str) -> String {
+    // Common UX: show prefix + "***" + suffix, without revealing the full secret.
+    // Keys are ASCII in practice; bytes-based masking is fine here.
+    let s = value.as_bytes();
+    if s.is_empty() {
+        return String::new();
+    }
+
+    let head = 3usize.min(s.len());
+    let tail = 3usize.min(s.len().saturating_sub(head));
+    if head + tail >= s.len() {
+        // Too short: show first and last only.
+        if s.len() == 1 {
+            return "*".to_string();
+        }
+        let first = s[0] as char;
+        let last = s[s.len() - 1] as char;
+        return format!("{}***{}", first, last);
+    }
+
+    let prefix = String::from_utf8_lossy(&s[..head]);
+    let suffix = String::from_utf8_lossy(&s[s.len() - tail..]);
+    format!("{}***{}", prefix, suffix)
 }

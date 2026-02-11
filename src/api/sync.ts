@@ -4,6 +4,9 @@ export interface SyncConfigDto {
   enabled: boolean;
   bucket?: string;
   endpoint?: string;
+  access_key?: string;
+  has_secret_key?: boolean;
+  secret_key_masked?: string;
   device_id: string;
   last_sync?: string;
 }
@@ -12,8 +15,8 @@ export interface SyncConfigUpdateDto {
   enabled: boolean;
   bucket: string;
   endpoint?: string;
-  access_key: string;
-  secret_key: string;
+  access_key?: string;
+  secret_key?: string;
 }
 
 export interface SyncStatusDto {
@@ -30,6 +33,10 @@ export const syncApi = {
 
   async updateConfig(config: SyncConfigUpdateDto): Promise<string> {
     return await invoke<string>('cmd_sync_update_config', { req: config });
+  }, 
+
+  async revealSecretKey(): Promise<string> {
+    return await invoke<string>('cmd_sync_reveal_secret_key');
   },
 
   async getStatus(): Promise<SyncStatusDto> {
