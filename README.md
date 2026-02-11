@@ -21,10 +21,9 @@
 
 ---
 
-<!-- TODO: Replace with actual screenshots -->
-<!-- <p align="center">
+<p align="center">
   <img src="docs/screenshots/project-list.png" width="800" alt="Project List" />
-</p> -->
+</p>
 
 ## Why Projex?
 
@@ -174,18 +173,17 @@ projex/
 
 ## Screenshots
 
-<!-- TODO: Add screenshots after building the app -->
-<!-- 
 | Project List | Project Detail |
 |:---:|:---:|
-| ![](docs/screenshots/project-list.png) | ![](docs/screenshots/project-detail.png) |
+| ![Project List](docs/screenshots/project-list.png) | ![Project Detail](docs/screenshots/project-detail.png) |
 
-| Rich Text Comments | Settings & Sync |
+| Rich Text Comments | Person Detail |
 |:---:|:---:|
-| ![](docs/screenshots/comments.png) | ![](docs/screenshots/settings.png) |
--->
+| ![Comments](docs/screenshots/comments.png) | ![Person Detail](docs/screenshots/person-detail.png) |
 
-> Screenshots coming soon. Run `npm run tauri dev` to see the app in action.
+| Settings & Sync |
+|:---:|
+| ![Settings](docs/screenshots/settings.png) |
 
 ## Roadmap
 
