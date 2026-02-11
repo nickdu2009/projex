@@ -25,15 +25,6 @@ jobs:
             args: ''
 
     runs-on: ${{ matrix.platform }}
-    env:
-      # Default to ad-hoc signing on macOS to avoid "app is damaged" warnings
-      # when users download the app from the browser without an Apple certificate.
-      # If a real signing identity is available, we will override this via $GITHUB_ENV.
-      APPLE_SIGNING_IDENTITY: ${{ matrix.platform == 'macos-latest' && '-' || '' }}
-      # Optional notarization credentials (recommended for distribution).
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
     steps:
       - name: Checkout repository
@@ -51,12 +42,16 @@ jobs:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Import Apple Developer Certificate (macOS, optional)
-        if: matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != ''
+        if: matrix.platform == 'macos-latest'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
+          if [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_CERTIFICATE_PASSWORD" ] || [ -z "$KEYCHAIN_PASSWORD" ]; then
+            echo "Apple signing secrets not configured; skip certificate import."
+            exit 0
+          fi
           echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
@@ -67,9 +62,21 @@ jobs:
           security find-identity -v -p codesigning build.keychain
 
       - name: Resolve signing identity (macOS)
-        if: matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != ''
+        if: matrix.platform == 'macos-latest'
         run: |
-          CERT_INFO=$(security find-identity -v -p codesigning build.keychain | head -n 1)
+          IDENTITIES=$(security find-identity -v -p codesigning build.keychain 2>/dev/null || true)
+          if [ -z "$IDENTITIES" ]; then
+            echo "Apple certificate not imported; using ad-hoc signing identity '-'"
+            echo "APPLE_SIGNING_IDENTITY=-" >> $GITHUB_ENV
+            exit 0
+          fi
+          if echo "$IDENTITIES" | grep -q "0 valid identities found"; then
+            echo "No valid code signing identity found; using ad-hoc signing identity '-'"
+            echo "APPLE_SIGNING_IDENTITY=-" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          CERT_INFO=$(echo "$IDENTITIES" | head -n 1)
           CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
           echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
           echo "Using signing identity: $CERT_ID"
@@ -82,15 +89,39 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build and release
+      - name: Build and release (macOS)
+        if: matrix.platform == 'macos-latest'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS signing & notarization (optional, controlled via repo secrets)
+          # Default to ad-hoc signing to reduce Gatekeeper "app is damaged" warnings.
+          # If a real signing identity is available, it is resolved via the previous steps.
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ env.APPLE_ID }}
-          APPLE_PASSWORD: ${{ env.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ env.APPLE_TEAM_ID }}
+          # Optional notarization credentials (recommended for distribution).
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'Projex v__VERSION__'
+          releaseBody: |
+            ## What's New
+
+            See the assets below to download and install Projex v__VERSION__.
+
+            ### Downloads
+            - **macOS (Apple Silicon)**: `.dmg` file for M1/M2/M3 Macs
+            - **macOS (Intel)**: `.dmg` file for Intel Macs
+            - **Windows**: `.msi` installer or `.exe` setup
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+      - name: Build and release (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
           releaseName: 'Projex v__VERSION__'
