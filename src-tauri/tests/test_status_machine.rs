@@ -3,46 +3,49 @@
 use app_lib::domain::{ProjectStatus, StatusMachine};
 
 // ══════════════════════════════════════════════════════════
-//  ProjectStatus::from_str / as_str
+//  ProjectStatus::from_str / as_str (via std::str::FromStr)
 // ══════════════════════════════════════════════════════════
 
 #[test]
 fn from_str_all_valid_statuses() {
     assert_eq!(
-        ProjectStatus::from_str("BACKLOG"),
+        "BACKLOG".parse::<ProjectStatus>().ok(),
         Some(ProjectStatus::Backlog)
     );
     assert_eq!(
-        ProjectStatus::from_str("PLANNED"),
+        "PLANNED".parse::<ProjectStatus>().ok(),
         Some(ProjectStatus::Planned)
     );
     assert_eq!(
-        ProjectStatus::from_str("IN_PROGRESS"),
+        "IN_PROGRESS".parse::<ProjectStatus>().ok(),
         Some(ProjectStatus::InProgress)
     );
     assert_eq!(
-        ProjectStatus::from_str("BLOCKED"),
+        "BLOCKED".parse::<ProjectStatus>().ok(),
         Some(ProjectStatus::Blocked)
     );
-    assert_eq!(ProjectStatus::from_str("DONE"), Some(ProjectStatus::Done));
     assert_eq!(
-        ProjectStatus::from_str("ARCHIVED"),
+        "DONE".parse::<ProjectStatus>().ok(),
+        Some(ProjectStatus::Done)
+    );
+    assert_eq!(
+        "ARCHIVED".parse::<ProjectStatus>().ok(),
         Some(ProjectStatus::Archived)
     );
 }
 
 #[test]
-fn from_str_invalid_returns_none() {
-    assert_eq!(ProjectStatus::from_str("FOOBAR"), None);
-    assert_eq!(ProjectStatus::from_str("backlog"), None); // case-sensitive
-    assert_eq!(ProjectStatus::from_str(""), None);
+fn from_str_invalid_returns_err() {
+    assert!("FOOBAR".parse::<ProjectStatus>().is_err());
+    assert!("backlog".parse::<ProjectStatus>().is_err()); // case-sensitive
+    assert!("".parse::<ProjectStatus>().is_err());
 }
 
 #[test]
 fn as_str_roundtrips() {
     for status in ProjectStatus::all() {
         let s = status.as_str();
-        assert_eq!(ProjectStatus::from_str(s), Some(*status));
+        assert_eq!(s.parse::<ProjectStatus>().ok(), Some(*status));
     }
 }
 

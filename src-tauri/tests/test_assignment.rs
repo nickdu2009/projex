@@ -9,6 +9,7 @@ use app_lib::infra::db::init_test_db;
 
 // ──────────────────────── Helper ────────────────────────
 
+#[allow(dead_code)]
 struct TestSeedIds {
     owner_id: String,
     partner_id: String,

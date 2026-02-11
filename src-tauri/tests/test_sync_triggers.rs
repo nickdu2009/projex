@@ -26,9 +26,8 @@ fn setup_with_sync_enabled() -> (app_lib::infra::DbPool, String) {
 }
 
 fn setup_with_sync_disabled() -> app_lib::infra::DbPool {
-    let pool = init_test_db();
     // sync_enabled defaults to '0', no need to change
-    pool
+    init_test_db()
 }
 
 fn count_sync_metadata(pool: &app_lib::infra::DbPool) -> i64 {

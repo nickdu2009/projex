@@ -1,6 +1,8 @@
 //! Project status enum and state machine rules.
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -13,6 +15,32 @@ pub enum ProjectStatus {
     Archived,
 }
 
+/// Error returned when parsing an invalid project status string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseStatusError(pub String);
+
+impl fmt::Display for ParseStatusError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid project status: '{}'", self.0)
+    }
+}
+
+impl FromStr for ProjectStatus {
+    type Err = ParseStatusError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "BACKLOG" => Ok(Self::Backlog),
+            "PLANNED" => Ok(Self::Planned),
+            "IN_PROGRESS" => Ok(Self::InProgress),
+            "BLOCKED" => Ok(Self::Blocked),
+            "DONE" => Ok(Self::Done),
+            "ARCHIVED" => Ok(Self::Archived),
+            _ => Err(ParseStatusError(s.to_string())),
+        }
+    }
+}
+
 impl ProjectStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -22,18 +50,6 @@ impl ProjectStatus {
             Self::Blocked => "BLOCKED",
             Self::Done => "DONE",
             Self::Archived => "ARCHIVED",
-        }
-    }
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "BACKLOG" => Some(Self::Backlog),
-            "PLANNED" => Some(Self::Planned),
-            "IN_PROGRESS" => Some(Self::InProgress),
-            "BLOCKED" => Some(Self::Blocked),
-            "DONE" => Some(Self::Done),
-            "ARCHIVED" => Some(Self::Archived),
-            _ => None,
         }
     }
 

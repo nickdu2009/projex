@@ -172,10 +172,8 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
         let tag_rows = tag_stmt
             .query_map([&project_id], |r| r.get::<_, String>(0))
             .map_err(|e| AppError::Db(e.to_string()))?;
-        for tag_result in tag_rows {
-            if let Ok(tag) = tag_result {
-                tags.push(tag);
-            }
+        for tag in tag_rows.flatten() {
+            tags.push(tag);
         }
 
         projects.push(ExportProject {
