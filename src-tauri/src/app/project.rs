@@ -9,6 +9,23 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Type alias to reduce complexity of the raw project query tuple.
+type ProjectRawRow = (
+    String,          // id
+    String,          // name
+    String,          // description
+    i32,             // priority
+    String,          // current_status
+    String,          // country_code
+    String,          // partner_id
+    String,          // owner_person_id
+    Option<String>,  // start_date
+    Option<String>,  // due_date
+    String,          // created_at
+    String,          // updated_at
+    Option<String>,  // archived_at
+);
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectCreateReq {
@@ -135,7 +152,7 @@ pub struct ProjectChangeStatusReq {
 }
 
 fn parse_status(s: &str) -> Option<ProjectStatus> {
-    ProjectStatus::from_str(s)
+    s.parse::<ProjectStatus>().ok()
 }
 
 pub fn project_create(pool: &DbPool, req: ProjectCreateReq) -> Result<ProjectDetailDto, AppError> {
@@ -222,7 +239,7 @@ pub fn project_create(pool: &DbPool, req: ProjectCreateReq) -> Result<ProjectDet
 pub fn project_get(pool: &DbPool, project_id: &str) -> Result<ProjectDetailDto, AppError> {
     let conn = get_connection(pool);
 
-    let proj: (String, String, String, i32, String, String, String, String, Option<String>, Option<String>, String, String, Option<String>) = conn
+    let proj: ProjectRawRow = conn
         .query_row(
             "SELECT id, name, description, priority, current_status, country_code, partner_id, owner_person_id, start_date, due_date, created_at, updated_at, archived_at FROM projects WHERE id = ?1",
             [project_id],
@@ -628,10 +645,8 @@ pub fn project_list(pool: &DbPool, req: ProjectListReq) -> Result<ProjectListPag
             let mut tag_stmt =
                 conn.prepare("SELECT tag FROM project_tags WHERE project_id = ?1")?;
             let tag_rows = tag_stmt.query_map([&id], |r| r.get::<_, String>(0))?;
-            for tr in tag_rows {
-                if let Ok(t) = tr {
-                    tags.push(t);
-                }
+            for t in tag_rows.flatten() {
+                tags.push(t);
             }
         }
         items.push(ProjectListItemDto {

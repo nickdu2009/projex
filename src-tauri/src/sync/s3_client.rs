@@ -1,7 +1,7 @@
 //! S3 client wrapper for sync operations
 
 use aws_config::meta::region::RegionProviderChain;
-use aws_sdk_s3::{Client, Error as S3Error};
+use aws_sdk_s3::Client;
 use std::time::Instant;
 
 pub struct S3SyncClient {
@@ -17,7 +17,10 @@ impl S3SyncClient {
         device_id: String,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
-        let config = aws_config::from_env().region(region_provider).load().await;
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(region_provider)
+            .load()
+            .await;
         let client = Client::new(&config);
 
         Ok(Self {
@@ -39,7 +42,7 @@ impl S3SyncClient {
 
         let creds = Credentials::new(access_key, secret_key, None, None, "custom");
 
-        let config = aws_config::from_env()
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
             .endpoint_url(endpoint)
             .credentials_provider(creds)
             .load()
