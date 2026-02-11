@@ -18,7 +18,7 @@ import Mention from '@tiptap/extension-mention';
 import { IconPhoto, IconTable } from '@tabler/icons-react';
 import { ActionIcon, FileButton, Tooltip } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import { useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { createMentionSuggestion, type MentionItem } from './mentionSuggestion';
 import { SlashCommand, createSlashSuggestion } from './slashCommand';
 
@@ -43,15 +43,31 @@ export function RichTextEditor({
   // Keep a mutable ref so the suggestion callback always reads fresh data,
   // even though useEditor captures extensions only on mount.
   const mentionItemsRef = useRef<MentionItem[]>(mentionItems);
-  mentionItemsRef.current = mentionItems;
+  useEffect(() => {
+    mentionItemsRef.current = mentionItems;
+  }, [mentionItems]);
 
-  // Stable reference – created once, reads from ref each time
-  const mentionSuggestion = useRef(createMentionSuggestion(mentionItemsRef)).current;
+  // Stable reference – created once, reads from ref each time.
+  // The ref is passed as a container; actual .current access happens inside
+  // suggestion callbacks (user typing), not during render.
+  const mentionSuggestion = useMemo(
+    // eslint-disable-next-line react-hooks/refs
+    () => createMentionSuggestion(mentionItemsRef),
+    [],
+  );
 
-  // Slash command suggestion – uses a getter so t() is always fresh
+  // Slash command suggestion – uses a getter so t() is always fresh.
+  // Same pattern: the arrow function captures tRef but only reads .current
+  // inside suggestion callbacks, not during render.
   const tRef = useRef(t);
-  tRef.current = t;
-  const slashSuggestion = useRef(createSlashSuggestion(() => tRef.current)).current;
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
+  const slashSuggestion = useMemo(
+    // eslint-disable-next-line react-hooks/refs
+    () => createSlashSuggestion(() => tRef.current),
+    [],
+  );
 
   const editor = useEditor({
     extensions: [

@@ -3,16 +3,15 @@
  *
  * Renders a Notion-style command palette with keyboard navigation (↑ ↓ Enter).
  */
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useCallback } from 'react';
 import { Group, Paper, Text, UnstyledButton } from '@mantine/core';
 import type { FC } from 'react';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface SlashCommandItem {
   id: string;
   label: string;
   description: string;
-  icon: FC<any>;
+  icon: FC<{ size?: number; stroke?: number; style?: React.CSSProperties }>;
   /** Executed when the user selects this command */
   action: () => void;
 }
@@ -30,18 +29,30 @@ export const SlashCommandList = forwardRef<SlashCommandListRef, SlashCommandList
   ({ items, command }, ref) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const prevItemsRef = useRef(items);
 
-    useEffect(() => {
-      setSelectedIndex(0);
-    }, [items]);
+    // Reset selection when items change
+    // (Adjusting state based on props during render – React recommended pattern,
+    //  see https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+    // eslint-disable-next-line react-hooks/refs
+    if (prevItemsRef.current !== items) {
+      prevItemsRef.current = items; // eslint-disable-line react-hooks/refs
+      if (selectedIndex !== 0) {
+        setSelectedIndex(0);
+      }
+    }
 
     // Keep the selected item visible when navigating with keyboard
-    useEffect(() => {
+    const scrollSelected = useCallback(() => {
       const container = containerRef.current;
       if (!container) return;
       const el = container.querySelector<HTMLElement>('[data-slash-selected="true"]');
       el?.scrollIntoView({ block: 'nearest' });
-    }, [selectedIndex]);
+    }, []);
+
+    useEffect(() => {
+      scrollSelected();
+    }, [selectedIndex, scrollSelected]);
 
     const selectItem = (index: number) => {
       const item = items[index];

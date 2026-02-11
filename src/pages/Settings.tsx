@@ -42,7 +42,7 @@ export function Settings() {
       setSyncEnabled(config.enabled);
       setBucket(config.bucket || '');
       setEndpoint(config.endpoint || '');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Load sync config failed:', error);
     }
   };

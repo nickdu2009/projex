@@ -5,17 +5,24 @@
 
 import { Group, Text, Loader, ThemeIcon, ActionIcon, Tooltip } from '@mantine/core';
 import { IconCloudCheck, IconCloudX, IconRefresh } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { syncManager, type SyncState } from '../sync/SyncManager';
 
 export function SyncStatusBar() {
   const { t } = useTranslation();
   const [state, setState] = useState<SyncState>(syncManager.getState());
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     const unsubscribe = syncManager.subscribe(setState);
     return unsubscribe;
+  }, []);
+
+  // Tick every 30s so relative time display stays reasonably fresh
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
   }, []);
 
   const handleManualSync = async () => {
@@ -44,7 +51,7 @@ export function SyncStatusBar() {
     );
   };
 
-  const getStatusText = () => {
+  const getStatusText = useCallback(() => {
     if (state.status === 'syncing') {
       return t('sync.syncing');
     }
@@ -52,7 +59,7 @@ export function SyncStatusBar() {
       return t('sync.failed', { error: state.error });
     }
     if (state.lastSync) {
-      const diff = Date.now() - state.lastSync.getTime();
+      const diff = now - state.lastSync.getTime();
       const minutes = Math.floor(diff / 60000);
       if (minutes === 0) return t('sync.justSynced');
       if (minutes < 60) return t('sync.minutesAgo', { minutes });
@@ -60,7 +67,7 @@ export function SyncStatusBar() {
       return t('sync.hoursAgo', { hours });
     }
     return t('sync.notSynced');
-  };
+  }, [state, now, t]);
 
   const getStatusColor = () => {
     if (state.status === 'syncing') return 'blue';

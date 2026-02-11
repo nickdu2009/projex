@@ -42,9 +42,9 @@ export class SyncManager {
       });
 
       console.log('✅ SyncManager initialized', this.state);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ SyncManager init failed:', error);
-      this.updateState({ status: 'error', error: error.message });
+      this.updateState({ status: 'error', error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -100,11 +100,11 @@ export class SyncManager {
         error: undefined,
         pendingChanges: status.pending_changes,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Sync failed:', error);
       this.updateState({
         status: 'error',
-        error: error.message || 'Unknown error',
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       throw error;
     }

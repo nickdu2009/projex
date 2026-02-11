@@ -4,7 +4,7 @@
  * Renders a Mantine-styled popup with keyboard navigation (↑ ↓ Enter).
  * Used by the Tiptap Mention extension's `suggestion.render()` hook.
  */
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useCallback } from 'react';
 import { Paper, Text, UnstyledButton } from '@mantine/core';
 import { IconUser } from '@tabler/icons-react';
 
@@ -26,19 +26,30 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
   ({ items, command }, ref) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const prevItemsRef = useRef(items);
 
     // Reset selection when items change
-    useEffect(() => {
-      setSelectedIndex(0);
-    }, [items]);
+    // (Adjusting state based on props during render – React recommended pattern,
+    //  see https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+    // eslint-disable-next-line react-hooks/refs
+    if (prevItemsRef.current !== items) {
+      prevItemsRef.current = items; // eslint-disable-line react-hooks/refs
+      if (selectedIndex !== 0) {
+        setSelectedIndex(0);
+      }
+    }
 
     // Keep the selected item visible when navigating with keyboard
-    useEffect(() => {
+    const scrollSelected = useCallback(() => {
       const container = containerRef.current;
       if (!container) return;
       const el = container.querySelector<HTMLElement>('[data-mention-selected="true"]');
       el?.scrollIntoView({ block: 'nearest' });
-    }, [selectedIndex]);
+    }, []);
+
+    useEffect(() => {
+      scrollSelected();
+    }, [selectedIndex, scrollSelected]);
 
     const selectItem = (index: number) => {
       const item = items[index];
