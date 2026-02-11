@@ -11,19 +11,19 @@ use uuid::Uuid;
 
 /// Type alias to reduce complexity of the raw project query tuple.
 type ProjectRawRow = (
-    String,          // id
-    String,          // name
-    String,          // description
-    i32,             // priority
-    String,          // current_status
-    String,          // country_code
-    String,          // partner_id
-    String,          // owner_person_id
-    Option<String>,  // start_date
-    Option<String>,  // due_date
-    String,          // created_at
-    String,          // updated_at
-    Option<String>,  // archived_at
+    String,         // id
+    String,         // name
+    String,         // description
+    i32,            // priority
+    String,         // current_status
+    String,         // country_code
+    String,         // partner_id
+    String,         // owner_person_id
+    Option<String>, // start_date
+    Option<String>, // due_date
+    String,         // created_at
+    String,         // updated_at
+    Option<String>, // archived_at
 );
 
 #[derive(Debug, Deserialize)]
