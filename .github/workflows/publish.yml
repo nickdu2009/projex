@@ -97,10 +97,6 @@ jobs:
           # Default to ad-hoc signing to reduce Gatekeeper "app is damaged" warnings.
           # If a real signing identity is available, it is resolved via the previous steps.
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-          # Optional notarization credentials (recommended for distribution).
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: v__VERSION__
           releaseName: 'Projex v__VERSION__'
