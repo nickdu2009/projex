@@ -5,7 +5,7 @@
 ![](https://img.shields.io/badge/Platform-macOS-blue.svg)
 ![](https://img.shields.io/badge/License-MIT-green.svg)
 ![](https://img.shields.io/badge/Version-1.0.0-orange.svg)
-![](https://img.shields.io/badge/Tests-230%20passed-brightgreen.svg)
+![](https://img.shields.io/badge/Tests-245%20passed-brightgreen.svg)
 
 ## 核心特性
 
@@ -68,7 +68,7 @@ npm run tauri dev
 # 生产构建
 npm run tauri build
 
-# 运行后端测试（230 个测试用例）
+# 运行后端测试（245 个测试用例）
 cd src-tauri && cargo test
 ```
 
@@ -91,8 +91,8 @@ projex/
 │   ├── pages/                # 页面组件
 │   └── theme.ts              # Mantine 主题
 ├── src-tauri/                 # 后端 (Rust)
-│   ├── migrations/           # SQL 迁移 (3 个)
-│   ├── tests/                # 集成测试 (12 个文件, 230 个用例)
+│   ├── migrations/           # SQL 迁移 (4 个)
+│   ├── tests/                # 集成测试 (13 个文件, 245 个用例)
 │   └── src/
 │       ├── app/              # 业务逻辑 (CRUD, 导入导出)
 │       ├── commands/         # Tauri 命令层
@@ -119,7 +119,7 @@ projex/
 | 数据库位置 | `~/Library/Application Support/com.nickdu.projex/app.db` |
 | 默认窗口 | 1200 x 800 |
 | 最小窗口 | 800 x 500 |
-| Schema 版本 | 1 |
+| Schema 版本 | 2 |
 
 ## 许可证
 

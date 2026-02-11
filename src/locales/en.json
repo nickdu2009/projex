@@ -235,6 +235,8 @@
   "settings.language.en": "English",
   "settings.language.zh": "中文",
   "settings.about.title": "About",
+  "settings.about.version": "Projex v1.0.0",
+  "settings.about.schema": "Schema Version: 2",
 
   "sync.syncing": "Syncing...",
   "sync.failed": "Sync failed: {{error}}",
@@ -268,6 +270,7 @@
   "comment.insertImage": "Insert Image",
   "comment.insertTable": "Insert Table",
   "comment.table": "Table",
+  "comment.noResults": "No results",
   "comment.anonymous": "Anonymous",
   "comment.justNow": "Just now",
   "comment.minutesAgo": "{{count}} min ago",
@@ -299,5 +302,6 @@
   "slash.image": "Image",
   "slash.imageDesc": "Upload an image",
   "slash.date": "Date",
-  "slash.dateDesc": "Insert today's date"
+  "slash.dateDesc": "Insert today's date",
+  "slash.noMatching": "No matching commands"
 }

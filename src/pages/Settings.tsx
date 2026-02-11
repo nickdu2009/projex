@@ -355,10 +355,10 @@ export function Settings() {
             {t('settings.about.title')}
           </Text>
           <Text size="xs" c="dimmed">
-            Projex v1.0.0
+            {t('settings.about.version')}
           </Text>
           <Text size="xs" c="dimmed">
-            Schema Version: 1
+            {t('settings.about.schema')}
           </Text>
         </Stack>
       </Paper>

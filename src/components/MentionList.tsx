@@ -7,6 +7,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useCallback } from 'react';
 import { Paper, Text, UnstyledButton } from '@mantine/core';
 import { IconUser } from '@tabler/icons-react';
+import i18n from '../i18n';
 
 export interface MentionItem {
   id: string;
@@ -80,7 +81,7 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
       return (
         <Paper shadow="md" radius="md" p="xs" withBorder>
           <Text size="xs" c="dimmed" ta="center" py={4}>
-            No results
+            {i18n.t('comment.noResults')}
           </Text>
         </Paper>
       );

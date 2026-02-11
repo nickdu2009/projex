@@ -2,9 +2,9 @@
 name = "projex"
 version = "1.0.0"
 description = "Projex - Personal Project Management Tool"
-authors = ["you"]
-license = ""
-repository = ""
+authors = ["nickdu"]
+license = "MIT"
+repository = "https://github.com/nickdu2009/projex"
 edition = "2021"
 rust-version = "1.77.2"
 

@@ -235,6 +235,8 @@
   "settings.language.en": "English",
   "settings.language.zh": "中文",
   "settings.about.title": "关于",
+  "settings.about.version": "Projex v1.0.0",
+  "settings.about.schema": "数据架构版本：2",
 
   "sync.syncing": "同步中...",
   "sync.failed": "同步失败: {{error}}",
@@ -268,6 +270,7 @@
   "comment.insertImage": "插入图片",
   "comment.insertTable": "插入表格",
   "comment.table": "表格",
+  "comment.noResults": "无结果",
   "comment.anonymous": "匿名",
   "comment.justNow": "刚刚",
   "comment.minutesAgo": "{{count}} 分钟前",
@@ -299,5 +302,6 @@
   "slash.image": "图片",
   "slash.imageDesc": "上传图片",
   "slash.date": "日期",
-  "slash.dateDesc": "插入今天的日期"
+  "slash.dateDesc": "插入今天的日期",
+  "slash.noMatching": "无匹配命令"
 }
