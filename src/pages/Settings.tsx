@@ -2,6 +2,7 @@ import { ActionIcon, Button, Group, Paper, SegmentedControl, Stack, Text, Title,
 import { IconDownload, IconUpload, IconCloud, IconCloudUpload, IconRestore, IconEye, IconEyeOff, IconEdit } from '@tabler/icons-react';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { getVersion } from '@tauri-apps/api/app';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { exportApi } from '../api/export';
@@ -18,6 +19,7 @@ export function Settings() {
   const { t, i18n } = useTranslation();
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const invalidatePartners = usePartnerStore((s) => s.invalidate);
   const invalidatePersons = usePersonStore((s) => s.invalidate);
@@ -42,6 +44,23 @@ export function Settings() {
 
   useEffect(() => {
     loadSyncConfig();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const v = await getVersion();
+        if (!cancelled) setAppVersion(v);
+      } catch (error: unknown) {
+        // In web mode (non-Tauri), this may fail. Keep UI stable with a fallback.
+        logger.debug('Get app version skipped (non-Tauri runtime):', error);
+        if (!cancelled) setAppVersion(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const loadSyncConfig = async () => {
@@ -506,7 +525,7 @@ export function Settings() {
             {t('settings.about.title')}
           </Text>
           <Text size="xs" c="dimmed">
-            {t('settings.about.version')}
+            {t('settings.about.version', { version: appVersion ?? '—' })}
           </Text>
           <Text size="xs" c="dimmed">
             {t('settings.about.schema')}

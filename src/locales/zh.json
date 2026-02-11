@@ -241,7 +241,7 @@
   "settings.language.en": "English",
   "settings.language.zh": "中文",
   "settings.about.title": "关于",
-  "settings.about.version": "Projex v1.0.0",
+  "settings.about.version": "Projex v{{version}}",
   "settings.about.schema": "数据架构版本：2",
 
   "sync.syncing": "同步中...",

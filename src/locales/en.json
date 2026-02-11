@@ -241,7 +241,7 @@
   "settings.language.en": "English",
   "settings.language.zh": "中文",
   "settings.about.title": "About",
-  "settings.about.version": "Projex v1.0.0",
+  "settings.about.version": "Projex v{{version}}",
   "settings.about.schema": "Schema Version: 2",
 
   "sync.syncing": "Syncing...",
