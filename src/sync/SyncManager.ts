@@ -4,6 +4,7 @@
  */
 
 import { syncApi, type SyncConfigDto } from '../api/sync';
+import { logger } from '../utils/logger';
 
 export interface SyncState {
   status: 'idle' | 'syncing' | 'error';
@@ -41,9 +42,9 @@ export class SyncManager {
         pendingChanges: status.pending_changes,
       });
 
-      console.log('✅ SyncManager initialized', this.state);
+      logger.info('SyncManager initialized', this.state);
     } catch (error: unknown) {
-      console.error('❌ SyncManager init failed:', error);
+      logger.error('SyncManager init failed:', error);
       this.updateState({ status: 'error', error: error instanceof Error ? error.message : String(error) });
     }
   }
@@ -82,7 +83,7 @@ export class SyncManager {
    */
   async sync(): Promise<void> {
     if (this.state.status === 'syncing') {
-      console.log('Sync already in progress');
+      logger.info('Sync already in progress');
       return;
     }
 
@@ -90,7 +91,7 @@ export class SyncManager {
 
     try {
       const result = await syncApi.syncFull();
-      console.log('✅ Sync completed:', result);
+      logger.info('Sync completed:', result);
 
       // 更新状态
       const status = await syncApi.getStatus();
@@ -101,7 +102,7 @@ export class SyncManager {
         pendingChanges: status.pending_changes,
       });
     } catch (error: unknown) {
-      console.error('❌ Sync failed:', error);
+      logger.error('Sync failed:', error);
       this.updateState({
         status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -136,11 +137,11 @@ export class SyncManager {
 
     this.autoSyncTimer = window.setInterval(() => {
       this.sync().catch((err) => {
-        console.error('Auto sync failed:', err);
+        logger.error('Auto sync failed:', err);
       });
     }, this.autoSyncInterval);
 
-    console.log(`🔄 Auto sync started (interval: ${this.autoSyncInterval}ms)`);
+    logger.info(`Auto sync started (interval: ${this.autoSyncInterval}ms)`);
   }
 
   /**
@@ -150,7 +151,7 @@ export class SyncManager {
     if (this.autoSyncTimer) {
       clearInterval(this.autoSyncTimer);
       this.autoSyncTimer = undefined;
-      console.log('⏸️ Auto sync stopped');
+      logger.info('Auto sync stopped');
     }
   }
 

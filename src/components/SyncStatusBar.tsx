@@ -8,6 +8,7 @@ import { IconCloudCheck, IconCloudX, IconRefresh } from '@tabler/icons-react';
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { syncManager, type SyncState } from '../sync/SyncManager';
+import { logger } from '../utils/logger';
 
 export function SyncStatusBar() {
   const { t } = useTranslation();
@@ -29,7 +30,7 @@ export function SyncStatusBar() {
     try {
       await syncManager.sync();
     } catch (error) {
-      console.error('Manual sync failed:', error);
+      logger.error('Manual sync failed:', error);
     }
   };
 
