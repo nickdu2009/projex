@@ -31,6 +31,15 @@ pub enum AppError {
 
     #[error("No active assignment to end")]
     AssignmentNotActive,
+
+    #[error("Sync config incomplete")]
+    SyncConfigIncomplete,
+
+    #[error("Access denied: bucket does not belong to current credentials")]
+    SyncBucketNotOwned,
+
+    #[error("Sync error: {0}")]
+    Sync(String),
 }
 
 impl AppError {
@@ -45,6 +54,9 @@ impl AppError {
             Self::NoteRequired => "NOTE_REQUIRED",
             Self::AssignmentAlreadyActive => "ASSIGNMENT_ALREADY_ACTIVE",
             Self::AssignmentNotActive => "ASSIGNMENT_NOT_ACTIVE",
+            Self::SyncConfigIncomplete => "SYNC_CONFIG_INCOMPLETE",
+            Self::SyncBucketNotOwned => "SYNC_BUCKET_NOT_OWNED",
+            Self::Sync(_) => "SYNC_ERROR",
         }
     }
 

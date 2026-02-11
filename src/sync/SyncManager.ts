@@ -56,8 +56,17 @@ export class SyncManager {
     return await syncApi.getConfig();
   }
 
+  async setEnabled(enabled: boolean): Promise<void> {
+    await syncApi.setEnabled(enabled);
+    await this.initialize();
+  }
+
   async revealSecretKey(): Promise<string> {
     return await syncApi.revealSecretKey();
+  }
+
+  async testConnection(): Promise<string> {
+    return await syncApi.testConnection();
   }
 
   /**

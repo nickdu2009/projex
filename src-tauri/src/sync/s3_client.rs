@@ -3,6 +3,7 @@
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3::Client;
 use std::time::Instant;
+use aws_sdk_s3::config::Region;
 
 pub struct S3SyncClient {
     client: Client,
@@ -42,13 +43,25 @@ impl S3SyncClient {
 
         let creds = Credentials::new(access_key, secret_key, None, None, "custom");
 
+        let region_provider = if let Some(region) = infer_region_from_endpoint(&endpoint) {
+            RegionProviderChain::first_try(Region::new(region)).or_else("us-east-1")
+        } else {
+            RegionProviderChain::default_provider().or_else("us-east-1")
+        };
+
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(region_provider)
             .endpoint_url(endpoint)
             .credentials_provider(creds)
             .load()
             .await;
 
-        let client = Client::new(&config);
+        // Use virtual-hosted style for S3-compatible endpoints.
+        // For Aliyun OSS, this is required (SecondLevelDomainForbidden).
+        let s3_config = aws_sdk_s3::config::Builder::from(&config)
+            .force_path_style(false)
+            .build();
+        let client = Client::from_conf(s3_config);
 
         Ok(Self {
             client,
@@ -134,6 +147,18 @@ impl S3SyncClient {
         Ok(keys)
     }
 
+    /// Test connection to bucket with minimal request.
+    pub async fn test_connection(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.client
+            .list_objects_v2()
+            .bucket(&self.bucket)
+            .max_keys(1)
+            .send()
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+        Ok(())
+    }
+
     /// Delete object from S3
     pub async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error>> {
         self.client
@@ -164,3 +189,32 @@ impl S3SyncClient {
         }
     }
 }
+
+fn infer_region_from_endpoint(endpoint: &str) -> Option<String> {
+    // Heuristics for common S3-compatible endpoints.
+    // - Aliyun OSS: "oss-cn-shanghai.aliyuncs.com" -> "oss-cn-shanghai"
+    // - Cloudflare R2: region is typically "auto"
+    let host = endpoint
+        .split("://")
+        .nth(1)
+        .unwrap_or(endpoint)
+        .split('/')
+        .next()
+        .unwrap_or("");
+
+    if host.contains("r2.cloudflarestorage.com") {
+        return Some("auto".to_string());
+    }
+
+    // Aliyun OSS patterns:
+    // - "oss-cn-shanghai.aliyuncs.com" -> "oss-cn-shanghai"
+    // - "s3.oss-cn-shanghai.aliyuncs.com" -> "oss-cn-shanghai"
+    for label in host.split('.') {
+        if label.starts_with("oss-") {
+            return Some(label.to_string());
+        }
+    }
+
+    None
+}
+

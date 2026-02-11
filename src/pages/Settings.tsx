@@ -15,6 +15,8 @@ import { useTagStore } from '../stores/useTagStore';
 import type { SyncConfigDto } from '../api/sync';
 import { ConfirmModal } from '../components/ConfirmModal';
 
+type AppErrorLike = { code?: string; message?: string };
+
 export function Settings() {
   const { t, i18n } = useTranslation();
   const [exporting, setExporting] = useState(false);
@@ -38,9 +40,36 @@ export function Settings() {
   const [revealSecretOpened, setRevealSecretOpened] = useState(false);
   const [revealingSecret, setRevealingSecret] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [snapshotting, setSnapshotting] = useState(false);
   const [restoring, setRestoring] = useState(false);
+
+  const getErrorCodeAndMessage = (e: unknown): { code?: string; message: string } => {
+    // Tauri invoke errors may come in different shapes across versions:
+    // - { code, message }
+    // - { error: { code, message } }
+    // - Error with message containing JSON
+    // - plain string
+    const anyErr = e as AppErrorLike & { error?: AppErrorLike };
+    const rawMessage = anyErr?.message ?? anyErr?.error?.message ?? (e instanceof Error ? e.message : String(e));
+    const rawCode = anyErr?.code ?? anyErr?.error?.code;
+
+    // Try parse JSON message like: {"code":"...","message":"..."}
+    if (!rawCode && rawMessage && rawMessage.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(rawMessage) as AppErrorLike;
+        return {
+          code: parsed?.code,
+          message: parsed?.message ?? rawMessage,
+        };
+      } catch {
+        // ignore
+      }
+    }
+
+    return { code: rawCode, message: rawMessage };
+  };
 
   useEffect(() => {
     loadSyncConfig();
@@ -216,13 +245,61 @@ export function Settings() {
     await loadSyncConfig();
   };
 
+  const handleToggleSyncEnabled = async (nextEnabled: boolean) => {
+    // Switch is not gated by edit mode.
+    setSyncEnabled(nextEnabled);
+    try {
+      if (nextEnabled) {
+        // Re-check config completeness from backend state (includes has_secret_key).
+        const cfg = await syncManager.getConfig();
+        const ok = Boolean(cfg.bucket?.trim()) && Boolean(cfg.access_key?.trim()) && Boolean(cfg.has_secret_key);
+        if (!ok) {
+          showError(t('settings.sync.configIncomplete'));
+          setSyncEnabled(false);
+          // Help user fix it immediately.
+          await handleEnterSyncConfigEdit();
+          return;
+        }
+      }
+
+      await syncManager.setEnabled(nextEnabled);
+    } catch (e: unknown) {
+      // Backend may reject enabling if config incomplete.
+      const { message } = getErrorCodeAndMessage(e);
+      showError(message || t('settings.sync.configSaveFailed'));
+      setSyncEnabled(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    try {
+      const cfg = await syncManager.getConfig();
+      const ok = Boolean(cfg.bucket?.trim()) && Boolean(cfg.access_key?.trim()) && Boolean(cfg.has_secret_key);
+      if (!ok) {
+        showError(t('settings.sync.configIncomplete'));
+        await handleEnterSyncConfigEdit();
+        return;
+      }
+
+      await syncManager.testConnection();
+      showSuccess(t('settings.sync.testConnectionSuccess'));
+    } catch (e: unknown) {
+      const { message } = getErrorCodeAndMessage(e);
+      showError(message || t('settings.sync.testConnectionFailed'), t('settings.sync.testConnectionFailed'));
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   const handleSync = async () => {
     setSyncing(true);
     try {
       await syncManager.sync();
       showSuccess(t('settings.sync.syncComplete'));
     } catch (e: unknown) {
-      showError((e as { message?: string })?.message ?? t('settings.sync.syncFailed'));
+      const { message } = getErrorCodeAndMessage(e);
+      showError(message || t('settings.sync.syncFailed'));
     } finally {
       setSyncing(false);
     }
@@ -276,8 +353,7 @@ export function Settings() {
               </Text>
               <Switch
                 checked={syncEnabled}
-                onChange={(e) => setSyncEnabled(e.currentTarget.checked)}
-                disabled={!syncConfigEditing}
+                onChange={(e) => handleToggleSyncEnabled(e.currentTarget.checked)}
               />
             </Group>
             <Text size="xs" c="dimmed" mb="md">
@@ -377,15 +453,23 @@ export function Settings() {
 
           <Group justify="flex-start" mt="xs">
             {!syncConfigEditing ? (
-              <Button
-                variant="light"
-                leftSection={<IconEdit size={16} />}
-                onClick={handleEnterSyncConfigEdit}
-              >
-                {t('common.edit')}
-              </Button>
+              <>
+                <Button
+                  variant="light"
+                  leftSection={<IconEdit size={16} />}
+                  onClick={handleEnterSyncConfigEdit}
+                >
+                  {t('common.edit')}
+                </Button>
+                <Button variant="light" onClick={handleTestConnection} loading={testingConnection}>
+                  {t('settings.sync.testConnection')}
+                </Button>
+              </>
             ) : (
               <>
+                <Button variant="light" onClick={handleTestConnection} loading={testingConnection}>
+                  {t('settings.sync.testConnection')}
+                </Button>
                 <Button variant="subtle" onClick={handleCancelSyncConfigEdit} disabled={saving}>
                   {t('common.cancel')}
                 </Button>

@@ -35,8 +35,16 @@ export const syncApi = {
     return await invoke<string>('cmd_sync_update_config', { req: config });
   }, 
 
+  async setEnabled(enabled: boolean): Promise<string> {
+    return await invoke<string>('cmd_sync_set_enabled', { req: { enabled } });
+  },
+
   async revealSecretKey(): Promise<string> {
     return await invoke<string>('cmd_sync_reveal_secret_key');
+  },
+
+  async testConnection(): Promise<string> {
+    return await invoke<string>('cmd_sync_test_connection');
   },
 
   async getStatus(): Promise<SyncStatusDto> {

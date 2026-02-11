@@ -6,6 +6,9 @@ use crate::sync::{DeltaSyncEngine, S3SyncClient, SnapshotManager};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use tauri::State;
+use std::error::Error as StdError;
+use aws_sdk_s3::error::SdkError;
+use aws_sdk_s3::error::ProvideErrorMetadata;
 
 #[derive(Debug, Deserialize)]
 pub struct SyncConfigReq {
@@ -14,6 +17,11 @@ pub struct SyncConfigReq {
     pub endpoint: Option<String>,
     pub access_key: Option<String>,
     pub secret_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SyncEnableReq {
+    pub enabled: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -103,6 +111,93 @@ pub fn cmd_sync_update_config(pool: State<DbPool>, req: SyncConfigReq) -> Result
     Ok("Sync configuration updated".to_string())
 }
 
+/// Enable/disable sync (independent from config editing).
+/// When enabling, validate required S3 config exists.
+#[tauri::command]
+pub fn cmd_sync_set_enabled(pool: State<DbPool>, req: SyncEnableReq) -> Result<String, AppError> {
+    let conn = pool
+        .inner()
+        .0
+        .lock()
+        .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+
+    if req.enabled {
+        let bucket_ok = get_config_value(&conn, "s3_bucket")
+            .ok()
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false);
+        let access_ok = get_config_value(&conn, "s3_access_key")
+            .ok()
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false);
+        let secret_ok = get_config_value(&conn, "s3_secret_key")
+            .ok()
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false);
+
+        if !bucket_ok || !access_ok || !secret_ok {
+            return Err(AppError::SyncConfigIncomplete);
+        }
+    }
+
+    set_config_value(&conn, "sync_enabled", if req.enabled { "1" } else { "0" })?;
+    Ok("Sync enabled updated".to_string())
+}
+
+/// Test S3 connectivity and permissions.
+#[tauri::command]
+pub async fn cmd_sync_test_connection(pool: State<'_, DbPool>) -> Result<String, AppError> {
+    let pool_ref = pool.inner();
+
+    // Get config
+    let (bucket, endpoint, access_key, secret_key) = {
+        let conn = pool_ref
+            .0
+            .lock()
+            .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+        let bucket = get_config_value(&conn, "s3_bucket").ok();
+        let endpoint = get_config_value(&conn, "s3_endpoint").ok();
+        let access_key = get_config_value(&conn, "s3_access_key").ok();
+        let secret_key = get_config_value(&conn, "s3_secret_key").ok();
+        (bucket, endpoint, access_key, secret_key)
+    };
+
+    let bucket = bucket.unwrap_or_default().trim().to_string();
+    let access_key = access_key.unwrap_or_default().trim().to_string();
+    let secret_key = secret_key.unwrap_or_default().trim().to_string();
+
+    if bucket.is_empty() || access_key.is_empty() || secret_key.is_empty() {
+        return Err(AppError::SyncConfigIncomplete);
+    }
+
+    // Reuse device_id only for namespacing; not required for the test itself.
+    let device_id = {
+        let conn = pool_ref
+            .0
+            .lock()
+            .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+        get_config_value(&conn, "device_id")?
+    };
+
+    let s3_client = if let Some(endpoint_url) = endpoint {
+        S3SyncClient::new_with_endpoint(bucket.clone(), device_id, endpoint_url, access_key, secret_key)
+            .await
+            .map_err(|e| AppError::Sync(format!("S3 client error: {}", e)))?
+    } else {
+        // No custom endpoint: rely on environment credentials.
+        S3SyncClient::new(bucket.clone(), device_id)
+            .await
+            .map_err(|e| AppError::Sync(format!("S3 client error: {}", e)))?
+    };
+
+    s3_client
+        .test_connection()
+        .await
+        .map_err(|e| map_s3_error("test", e))?;
+
+    Ok("Connection OK".to_string())
+}
+
 /// Get sync status
 #[tauri::command]
 pub fn cmd_sync_get_status(pool: State<DbPool>) -> Result<SyncStatusResp, AppError> {
@@ -186,7 +281,11 @@ pub async fn cmd_sync_full(pool: State<'_, DbPool>) -> Result<String, AppError> 
         s3_client
             .upload(&delta_key, delta_data)
             .await
-            .map_err(|e| AppError::Db(format!("S3 upload error: {:?}", e)))?;
+            .map_err(|e| {
+                // Log full debug info, but return a concise message to the UI.
+                log::error!("S3 upload error: {:?}", e);
+                map_s3_error("upload", e)
+            })?;
 
         // Mark as synced
         let last_id = local_delta.operations.len() as i64;
@@ -197,7 +296,10 @@ pub async fn cmd_sync_full(pool: State<'_, DbPool>) -> Result<String, AppError> 
     let remote_deltas = s3_client
         .list("deltas/")
         .await
-        .map_err(|e| AppError::Db(format!("S3 list error: {:?}", e)))?;
+        .map_err(|e| {
+            log::error!("S3 list error: {:?}", e);
+            map_s3_error("list", e)
+        })?;
 
     log::info!("Found {} remote delta files", remote_deltas.len());
 
@@ -269,7 +371,10 @@ pub async fn cmd_sync_create_snapshot(pool: State<'_, DbPool>) -> Result<String,
     s3_client
         .upload(&snapshot_key, snapshot_data)
         .await
-        .map_err(|e| AppError::Db(format!("S3 upload error: {:?}", e)))?;
+        .map_err(|e| {
+            log::error!("S3 upload error: {:?}", e);
+            map_s3_error("upload", e)
+        })?;
 
     log::info!("Snapshot uploaded: {}", snapshot_key);
 
@@ -317,7 +422,10 @@ pub async fn cmd_sync_restore_snapshot(pool: State<'_, DbPool>) -> Result<String
     let snapshots = s3_client
         .list("snapshots/")
         .await
-        .map_err(|e| AppError::Db(format!("S3 list error: {:?}", e)))?;
+        .map_err(|e| {
+            log::error!("S3 list error: {:?}", e);
+            map_s3_error("list", e)
+        })?;
 
     if snapshots.is_empty() {
         return Err(AppError::Db("No snapshots found".to_string()));
@@ -330,7 +438,10 @@ pub async fn cmd_sync_restore_snapshot(pool: State<'_, DbPool>) -> Result<String
     let snapshot_data = s3_client
         .download(latest_key)
         .await
-        .map_err(|e| AppError::Db(format!("S3 download error: {:?}", e)))?;
+        .map_err(|e| {
+            log::error!("S3 download error: {:?}", e);
+            map_s3_error("download", e)
+        })?;
 
     // Decompress and restore
     use crate::sync::snapshot::Snapshot;
@@ -381,6 +492,54 @@ fn set_config_value(conn: &Connection, key: &str, value: &str) -> Result<(), App
     .map_err(|e: rusqlite::Error| AppError::Db(e.to_string()))?;
 
     Ok(())
+}
+
+fn map_s3_error(op: &str, err: Box<dyn StdError>) -> AppError {
+    if let Some((code, message)) = extract_s3_error_code_message(err.as_ref()) {
+        let msg = message.trim();
+        if !msg.is_empty() {
+            // Return server message directly for UI display.
+            return AppError::Sync(format!("[{}] {}", code, msg));
+        }
+        return AppError::Sync(format!("[{}] {}", code, err));
+    }
+
+    AppError::Sync(format!("S3 {} failed: {}", op, err))
+}
+
+fn extract_s3_error_code_message(err: &(dyn StdError + 'static)) -> Option<(String, String)> {
+    use aws_sdk_s3::operation::{
+        get_object::GetObjectError, list_objects_v2::ListObjectsV2Error, put_object::PutObjectError,
+    };
+
+    // NOTE: we must extract code/message from structured metadata, NOT from Display/Debug strings.
+    fn from_sdk_error<E>(e: &SdkError<E>) -> Option<(String, String)>
+    where
+        E: std::error::Error + Send + Sync + 'static + ProvideErrorMetadata,
+    {
+        match e {
+            SdkError::ServiceError(se) => {
+                // Most generated service errors provide `.meta()` for ErrorMetadata.
+                let meta = se.err().meta();
+                let code = meta.code()?.to_string();
+                let message = meta.message().unwrap_or_default().to_string();
+                Some((code, message))
+            }
+            _ => None,
+        }
+    }
+
+    if let Some(e) = err.downcast_ref::<SdkError<ListObjectsV2Error>>() {
+        return from_sdk_error(e);
+    }
+    if let Some(e) = err.downcast_ref::<SdkError<PutObjectError>>() {
+        return from_sdk_error(e);
+    }
+    if let Some(e) = err.downcast_ref::<SdkError<GetObjectError>>() {
+        return from_sdk_error(e);
+    }
+
+    None
 }
 
 fn mask_credential(value: &str) -> String {
