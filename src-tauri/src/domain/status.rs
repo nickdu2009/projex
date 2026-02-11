@@ -63,7 +63,7 @@ impl StatusMachine {
             (Some(InProgress), Blocked) | (Some(InProgress), Done) => true,
             (Some(Blocked), InProgress) => true,
             (Some(Done), Archived) | (Some(Done), InProgress) => true, // rework
-            (Some(Archived), Backlog) => true,                       // unarchive
+            (Some(Archived), Backlog) => true,                         // unarchive
             _ => false,
         }
     }
@@ -76,7 +76,7 @@ impl StatusMachine {
             (Some(Archived), Backlog) |         // unarchive
             (Some(Done), InProgress) |         // rework
             (Some(Backlog), Archived) |        // abandon
-            (Some(Planned), Archived)          // cancel
+            (Some(Planned), Archived) // cancel
         )
     }
 }

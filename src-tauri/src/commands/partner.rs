@@ -20,7 +20,10 @@ pub struct PartnerGetReq {
 }
 
 #[tauri::command]
-pub fn cmd_partner_create(pool: State<DbPool>, req: PartnerCreateReq) -> Result<PartnerDto, AppError> {
+pub fn cmd_partner_create(
+    pool: State<DbPool>,
+    req: PartnerCreateReq,
+) -> Result<PartnerDto, AppError> {
     partner_create(&pool, req)
 }
 
@@ -30,17 +33,26 @@ pub fn cmd_partner_get(pool: State<DbPool>, req: PartnerGetReq) -> Result<Partne
 }
 
 #[tauri::command]
-pub fn cmd_partner_update(pool: State<DbPool>, req: PartnerUpdateReq) -> Result<PartnerDto, AppError> {
+pub fn cmd_partner_update(
+    pool: State<DbPool>,
+    req: PartnerUpdateReq,
+) -> Result<PartnerDto, AppError> {
     partner_update(&pool, req)
 }
 
 #[tauri::command]
-pub fn cmd_partner_deactivate(pool: State<DbPool>, req: PartnerGetReq) -> Result<PartnerDto, AppError> {
+pub fn cmd_partner_deactivate(
+    pool: State<DbPool>,
+    req: PartnerGetReq,
+) -> Result<PartnerDto, AppError> {
     partner_deactivate(&pool, &req.id)
 }
 
 #[tauri::command]
-pub fn cmd_partner_list(pool: State<DbPool>, req: Option<PartnerListReq>) -> Result<Vec<PartnerDto>, AppError> {
+pub fn cmd_partner_list(
+    pool: State<DbPool>,
+    req: Option<PartnerListReq>,
+) -> Result<Vec<PartnerDto>, AppError> {
     partner_list(&pool, req.and_then(|r| r.only_active).unwrap_or(true))
 }
 

@@ -33,9 +33,11 @@ fn setup_with_sync_disabled() -> app_lib::infra::DbPool {
 
 fn count_sync_metadata(pool: &app_lib::infra::DbPool) -> i64 {
     let conn = pool.0.lock().unwrap();
-    conn.query_row("SELECT COUNT(*) FROM sync_metadata", [], |row: &rusqlite::Row<'_>| {
-        row.get(0)
-    })
+    conn.query_row(
+        "SELECT COUNT(*) FROM sync_metadata",
+        [],
+        |row: &rusqlite::Row<'_>| row.get(0),
+    )
     .unwrap()
 }
 
@@ -172,7 +174,8 @@ fn trigger_persons_delete_generates_metadata() {
 
     {
         let conn = pool.0.lock().unwrap();
-        conn.execute("DELETE FROM persons WHERE id = 'p-trigger-3'", []).unwrap();
+        conn.execute("DELETE FROM persons WHERE id = 'p-trigger-3'", [])
+            .unwrap();
     }
     assert_eq!(count_sync_metadata(&pool), 2);
 
@@ -204,10 +207,15 @@ fn no_metadata_when_sync_disabled() {
             [],
         )
         .unwrap();
-        conn.execute("DELETE FROM persons WHERE id = 'p-no-sync'", []).unwrap();
+        conn.execute("DELETE FROM persons WHERE id = 'p-no-sync'", [])
+            .unwrap();
     }
 
-    assert_eq!(count_sync_metadata(&pool), 0, "No metadata should be created when sync is disabled");
+    assert_eq!(
+        count_sync_metadata(&pool),
+        0,
+        "No metadata should be created when sync is disabled"
+    );
 }
 
 // ══════════════════════════════════════════════════════════
@@ -251,7 +259,8 @@ fn trigger_partners_insert_update_delete() {
     // DELETE
     {
         let conn = pool.0.lock().unwrap();
-        conn.execute("DELETE FROM partners WHERE id = 'ptr-1'", []).unwrap();
+        conn.execute("DELETE FROM partners WHERE id = 'ptr-1'", [])
+            .unwrap();
     }
     assert_eq!(count_sync_metadata(&pool), 3);
     let (_, _, op, snapshot) = get_last_sync_metadata(&pool);
@@ -307,7 +316,8 @@ fn trigger_projects_insert_update_delete() {
     // DELETE project
     {
         let conn = pool.0.lock().unwrap();
-        conn.execute("DELETE FROM projects WHERE id = 'proj-1'", []).unwrap();
+        conn.execute("DELETE FROM projects WHERE id = 'proj-1'", [])
+            .unwrap();
     }
     assert_eq!(count_sync_metadata(&pool), base_count + 3);
     let (_, _, op, snapshot) = get_last_sync_metadata(&pool);
@@ -373,7 +383,8 @@ fn trigger_assignments_insert_update_delete() {
     // DELETE assignment
     {
         let conn = pool.0.lock().unwrap();
-        conn.execute("DELETE FROM assignments WHERE id = 'asgn-1'", []).unwrap();
+        conn.execute("DELETE FROM assignments WHERE id = 'asgn-1'", [])
+            .unwrap();
     }
     assert_eq!(count_sync_metadata(&pool), base_count + 3);
     let (_, _, op, snapshot) = get_last_sync_metadata(&pool);
@@ -423,7 +434,8 @@ fn trigger_status_history_insert_delete() {
     // DELETE status_history
     {
         let conn = pool.0.lock().unwrap();
-        conn.execute("DELETE FROM status_history WHERE id = 'sh-1'", []).unwrap();
+        conn.execute("DELETE FROM status_history WHERE id = 'sh-1'", [])
+            .unwrap();
     }
     assert_eq!(count_sync_metadata(&pool), base_count + 2);
     let (_, _, op, snapshot) = get_last_sync_metadata(&pool);
@@ -569,7 +581,11 @@ fn trigger_toggle_sync_mid_stream() {
         )
         .unwrap();
     }
-    assert_eq!(count_sync_metadata(&pool), 1, "Should still be 1 after disabling sync");
+    assert_eq!(
+        count_sync_metadata(&pool),
+        1,
+        "Should still be 1 after disabling sync"
+    );
 }
 
 #[test]

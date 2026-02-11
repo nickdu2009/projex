@@ -8,12 +8,27 @@ use app_lib::domain::{ProjectStatus, StatusMachine};
 
 #[test]
 fn from_str_all_valid_statuses() {
-    assert_eq!(ProjectStatus::from_str("BACKLOG"), Some(ProjectStatus::Backlog));
-    assert_eq!(ProjectStatus::from_str("PLANNED"), Some(ProjectStatus::Planned));
-    assert_eq!(ProjectStatus::from_str("IN_PROGRESS"), Some(ProjectStatus::InProgress));
-    assert_eq!(ProjectStatus::from_str("BLOCKED"), Some(ProjectStatus::Blocked));
+    assert_eq!(
+        ProjectStatus::from_str("BACKLOG"),
+        Some(ProjectStatus::Backlog)
+    );
+    assert_eq!(
+        ProjectStatus::from_str("PLANNED"),
+        Some(ProjectStatus::Planned)
+    );
+    assert_eq!(
+        ProjectStatus::from_str("IN_PROGRESS"),
+        Some(ProjectStatus::InProgress)
+    );
+    assert_eq!(
+        ProjectStatus::from_str("BLOCKED"),
+        Some(ProjectStatus::Blocked)
+    );
     assert_eq!(ProjectStatus::from_str("DONE"), Some(ProjectStatus::Done));
-    assert_eq!(ProjectStatus::from_str("ARCHIVED"), Some(ProjectStatus::Archived));
+    assert_eq!(
+        ProjectStatus::from_str("ARCHIVED"),
+        Some(ProjectStatus::Archived)
+    );
 }
 
 #[test]
@@ -47,52 +62,82 @@ fn valid_none_to_backlog() {
 
 #[test]
 fn valid_backlog_to_planned() {
-    assert!(StatusMachine::can_transition(Some(ProjectStatus::Backlog), ProjectStatus::Planned));
+    assert!(StatusMachine::can_transition(
+        Some(ProjectStatus::Backlog),
+        ProjectStatus::Planned
+    ));
 }
 
 #[test]
 fn valid_backlog_to_archived() {
-    assert!(StatusMachine::can_transition(Some(ProjectStatus::Backlog), ProjectStatus::Archived));
+    assert!(StatusMachine::can_transition(
+        Some(ProjectStatus::Backlog),
+        ProjectStatus::Archived
+    ));
 }
 
 #[test]
 fn valid_planned_to_in_progress() {
-    assert!(StatusMachine::can_transition(Some(ProjectStatus::Planned), ProjectStatus::InProgress));
+    assert!(StatusMachine::can_transition(
+        Some(ProjectStatus::Planned),
+        ProjectStatus::InProgress
+    ));
 }
 
 #[test]
 fn valid_planned_to_archived() {
-    assert!(StatusMachine::can_transition(Some(ProjectStatus::Planned), ProjectStatus::Archived));
+    assert!(StatusMachine::can_transition(
+        Some(ProjectStatus::Planned),
+        ProjectStatus::Archived
+    ));
 }
 
 #[test]
 fn valid_in_progress_to_blocked() {
-    assert!(StatusMachine::can_transition(Some(ProjectStatus::InProgress), ProjectStatus::Blocked));
+    assert!(StatusMachine::can_transition(
+        Some(ProjectStatus::InProgress),
+        ProjectStatus::Blocked
+    ));
 }
 
 #[test]
 fn valid_in_progress_to_done() {
-    assert!(StatusMachine::can_transition(Some(ProjectStatus::InProgress), ProjectStatus::Done));
+    assert!(StatusMachine::can_transition(
+        Some(ProjectStatus::InProgress),
+        ProjectStatus::Done
+    ));
 }
 
 #[test]
 fn valid_blocked_to_in_progress() {
-    assert!(StatusMachine::can_transition(Some(ProjectStatus::Blocked), ProjectStatus::InProgress));
+    assert!(StatusMachine::can_transition(
+        Some(ProjectStatus::Blocked),
+        ProjectStatus::InProgress
+    ));
 }
 
 #[test]
 fn valid_done_to_archived() {
-    assert!(StatusMachine::can_transition(Some(ProjectStatus::Done), ProjectStatus::Archived));
+    assert!(StatusMachine::can_transition(
+        Some(ProjectStatus::Done),
+        ProjectStatus::Archived
+    ));
 }
 
 #[test]
 fn valid_done_to_in_progress_rework() {
-    assert!(StatusMachine::can_transition(Some(ProjectStatus::Done), ProjectStatus::InProgress));
+    assert!(StatusMachine::can_transition(
+        Some(ProjectStatus::Done),
+        ProjectStatus::InProgress
+    ));
 }
 
 #[test]
 fn valid_archived_to_backlog_unarchive() {
-    assert!(StatusMachine::can_transition(Some(ProjectStatus::Archived), ProjectStatus::Backlog));
+    assert!(StatusMachine::can_transition(
+        Some(ProjectStatus::Archived),
+        ProjectStatus::Backlog
+    ));
 }
 
 // ══════════════════════════════════════════════════════════
@@ -102,110 +147,176 @@ fn valid_archived_to_backlog_unarchive() {
 #[test]
 fn invalid_none_to_non_backlog() {
     assert!(!StatusMachine::can_transition(None, ProjectStatus::Planned));
-    assert!(!StatusMachine::can_transition(None, ProjectStatus::InProgress));
+    assert!(!StatusMachine::can_transition(
+        None,
+        ProjectStatus::InProgress
+    ));
     assert!(!StatusMachine::can_transition(None, ProjectStatus::Done));
-    assert!(!StatusMachine::can_transition(None, ProjectStatus::Archived));
+    assert!(!StatusMachine::can_transition(
+        None,
+        ProjectStatus::Archived
+    ));
     assert!(!StatusMachine::can_transition(None, ProjectStatus::Blocked));
 }
 
 #[test]
 fn invalid_backlog_to_in_progress() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Backlog), ProjectStatus::InProgress));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Backlog),
+        ProjectStatus::InProgress
+    ));
 }
 
 #[test]
 fn invalid_backlog_to_done() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Backlog), ProjectStatus::Done));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Backlog),
+        ProjectStatus::Done
+    ));
 }
 
 #[test]
 fn invalid_backlog_to_blocked() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Backlog), ProjectStatus::Blocked));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Backlog),
+        ProjectStatus::Blocked
+    ));
 }
 
 #[test]
 fn invalid_planned_to_backlog() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Planned), ProjectStatus::Backlog));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Planned),
+        ProjectStatus::Backlog
+    ));
 }
 
 #[test]
 fn invalid_planned_to_done() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Planned), ProjectStatus::Done));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Planned),
+        ProjectStatus::Done
+    ));
 }
 
 #[test]
 fn invalid_planned_to_blocked() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Planned), ProjectStatus::Blocked));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Planned),
+        ProjectStatus::Blocked
+    ));
 }
 
 #[test]
 fn invalid_in_progress_to_backlog() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::InProgress), ProjectStatus::Backlog));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::InProgress),
+        ProjectStatus::Backlog
+    ));
 }
 
 #[test]
 fn invalid_in_progress_to_planned() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::InProgress), ProjectStatus::Planned));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::InProgress),
+        ProjectStatus::Planned
+    ));
 }
 
 #[test]
 fn invalid_in_progress_to_archived() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::InProgress), ProjectStatus::Archived));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::InProgress),
+        ProjectStatus::Archived
+    ));
 }
 
 #[test]
 fn invalid_blocked_to_backlog() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Blocked), ProjectStatus::Backlog));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Blocked),
+        ProjectStatus::Backlog
+    ));
 }
 
 #[test]
 fn invalid_blocked_to_planned() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Blocked), ProjectStatus::Planned));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Blocked),
+        ProjectStatus::Planned
+    ));
 }
 
 #[test]
 fn invalid_blocked_to_done() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Blocked), ProjectStatus::Done));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Blocked),
+        ProjectStatus::Done
+    ));
 }
 
 #[test]
 fn invalid_blocked_to_archived() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Blocked), ProjectStatus::Archived));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Blocked),
+        ProjectStatus::Archived
+    ));
 }
 
 #[test]
 fn invalid_done_to_backlog() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Done), ProjectStatus::Backlog));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Done),
+        ProjectStatus::Backlog
+    ));
 }
 
 #[test]
 fn invalid_done_to_planned() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Done), ProjectStatus::Planned));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Done),
+        ProjectStatus::Planned
+    ));
 }
 
 #[test]
 fn invalid_done_to_blocked() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Done), ProjectStatus::Blocked));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Done),
+        ProjectStatus::Blocked
+    ));
 }
 
 #[test]
 fn invalid_archived_to_planned() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Archived), ProjectStatus::Planned));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Archived),
+        ProjectStatus::Planned
+    ));
 }
 
 #[test]
 fn invalid_archived_to_in_progress() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Archived), ProjectStatus::InProgress));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Archived),
+        ProjectStatus::InProgress
+    ));
 }
 
 #[test]
 fn invalid_archived_to_done() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Archived), ProjectStatus::Done));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Archived),
+        ProjectStatus::Done
+    ));
 }
 
 #[test]
 fn invalid_archived_to_blocked() {
-    assert!(!StatusMachine::can_transition(Some(ProjectStatus::Archived), ProjectStatus::Blocked));
+    assert!(!StatusMachine::can_transition(
+        Some(ProjectStatus::Archived),
+        ProjectStatus::Blocked
+    ));
 }
 
 #[test]
@@ -226,32 +337,62 @@ fn invalid_self_transition() {
 
 #[test]
 fn note_required_archived_to_backlog() {
-    assert!(StatusMachine::note_required(Some(ProjectStatus::Archived), ProjectStatus::Backlog));
+    assert!(StatusMachine::note_required(
+        Some(ProjectStatus::Archived),
+        ProjectStatus::Backlog
+    ));
 }
 
 #[test]
 fn note_required_done_to_in_progress() {
-    assert!(StatusMachine::note_required(Some(ProjectStatus::Done), ProjectStatus::InProgress));
+    assert!(StatusMachine::note_required(
+        Some(ProjectStatus::Done),
+        ProjectStatus::InProgress
+    ));
 }
 
 #[test]
 fn note_required_backlog_to_archived() {
-    assert!(StatusMachine::note_required(Some(ProjectStatus::Backlog), ProjectStatus::Archived));
+    assert!(StatusMachine::note_required(
+        Some(ProjectStatus::Backlog),
+        ProjectStatus::Archived
+    ));
 }
 
 #[test]
 fn note_required_planned_to_archived() {
-    assert!(StatusMachine::note_required(Some(ProjectStatus::Planned), ProjectStatus::Archived));
+    assert!(StatusMachine::note_required(
+        Some(ProjectStatus::Planned),
+        ProjectStatus::Archived
+    ));
 }
 
 #[test]
 fn note_not_required_for_normal_transitions() {
     // All valid transitions that do NOT require notes
     assert!(!StatusMachine::note_required(None, ProjectStatus::Backlog));
-    assert!(!StatusMachine::note_required(Some(ProjectStatus::Backlog), ProjectStatus::Planned));
-    assert!(!StatusMachine::note_required(Some(ProjectStatus::Planned), ProjectStatus::InProgress));
-    assert!(!StatusMachine::note_required(Some(ProjectStatus::InProgress), ProjectStatus::Blocked));
-    assert!(!StatusMachine::note_required(Some(ProjectStatus::InProgress), ProjectStatus::Done));
-    assert!(!StatusMachine::note_required(Some(ProjectStatus::Blocked), ProjectStatus::InProgress));
-    assert!(!StatusMachine::note_required(Some(ProjectStatus::Done), ProjectStatus::Archived));
+    assert!(!StatusMachine::note_required(
+        Some(ProjectStatus::Backlog),
+        ProjectStatus::Planned
+    ));
+    assert!(!StatusMachine::note_required(
+        Some(ProjectStatus::Planned),
+        ProjectStatus::InProgress
+    ));
+    assert!(!StatusMachine::note_required(
+        Some(ProjectStatus::InProgress),
+        ProjectStatus::Blocked
+    ));
+    assert!(!StatusMachine::note_required(
+        Some(ProjectStatus::InProgress),
+        ProjectStatus::Done
+    ));
+    assert!(!StatusMachine::note_required(
+        Some(ProjectStatus::Blocked),
+        ProjectStatus::InProgress
+    ));
+    assert!(!StatusMachine::note_required(
+        Some(ProjectStatus::Done),
+        ProjectStatus::Archived
+    ));
 }

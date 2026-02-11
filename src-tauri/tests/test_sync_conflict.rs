@@ -1,8 +1,8 @@
 //! Delta apply (all table upserts) and vector clock update integration tests
 
+use app_lib::error::AppError;
 use app_lib::infra::db::init_test_db;
 use app_lib::sync::{Delta, DeltaSyncEngine, Operation, OperationType, VectorClock};
-use app_lib::error::AppError;
 use serde_json::json;
 
 // ──────────────────────── Helper ────────────────────────
@@ -32,7 +32,8 @@ fn seed_person_and_partner(pool: &app_lib::infra::DbPool) {
         "INSERT INTO partners (id, name, note, is_active, created_at, updated_at, _version)
          VALUES ('partner-1', 'Corp', '', 1, datetime('now'), datetime('now'), 1)",
         [],
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 fn make_delta(operations: Vec<Operation>) -> Delta {
@@ -53,7 +54,8 @@ fn count_table(pool: &app_lib::infra::DbPool, table: &str) -> i64 {
         &format!("SELECT COUNT(*) FROM {}", table),
         [],
         |row: &rusqlite::Row<'_>| row.get(0),
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 // ══════════════════════════════════════════════════════════
@@ -85,11 +87,13 @@ fn apply_delta_upsert_person_insert() {
     engine.apply_delta(&delta).unwrap();
 
     let conn = pool.0.lock().unwrap();
-    let name: String = conn.query_row(
-        "SELECT display_name FROM persons WHERE id = 'rp-1'",
-        [],
-        |r: &rusqlite::Row<'_>| r.get(0),
-    ).unwrap();
+    let name: String = conn
+        .query_row(
+            "SELECT display_name FROM persons WHERE id = 'rp-1'",
+            [],
+            |r: &rusqlite::Row<'_>| r.get(0),
+        )
+        .unwrap();
     assert_eq!(name, "Remote Person");
 }
 
@@ -119,11 +123,13 @@ fn apply_delta_upsert_person_update() {
     engine.apply_delta(&delta).unwrap();
 
     let conn = pool.0.lock().unwrap();
-    let (name, email): (String, String) = conn.query_row(
-        "SELECT display_name, email FROM persons WHERE id = 'person-1'",
-        [],
-        |r: &rusqlite::Row<'_>| Ok((r.get(0)?, r.get(1)?)),
-    ).unwrap();
+    let (name, email): (String, String) = conn
+        .query_row(
+            "SELECT display_name, email FROM persons WHERE id = 'person-1'",
+            [],
+            |r: &rusqlite::Row<'_>| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
     assert_eq!(name, "Alice Updated");
     assert_eq!(email, "alice-new@t.com");
 }
@@ -155,11 +161,13 @@ fn apply_delta_upsert_partner() {
     engine.apply_delta(&delta).unwrap();
 
     let conn = pool.0.lock().unwrap();
-    let name: String = conn.query_row(
-        "SELECT name FROM partners WHERE id = 'rptr-1'",
-        [],
-        |r: &rusqlite::Row<'_>| r.get(0),
-    ).unwrap();
+    let name: String = conn
+        .query_row(
+            "SELECT name FROM partners WHERE id = 'rptr-1'",
+            [],
+            |r: &rusqlite::Row<'_>| r.get(0),
+        )
+        .unwrap();
     assert_eq!(name, "Remote Corp");
 }
 
@@ -198,11 +206,13 @@ fn apply_delta_upsert_project() {
     engine.apply_delta(&delta).unwrap();
 
     let conn = pool.0.lock().unwrap();
-    let (name, status): (String, String) = conn.query_row(
-        "SELECT name, current_status FROM projects WHERE id = 'rproj-1'",
-        [],
-        |r: &rusqlite::Row<'_>| Ok((r.get(0)?, r.get(1)?)),
-    ).unwrap();
+    let (name, status): (String, String) = conn
+        .query_row(
+            "SELECT name, current_status FROM projects WHERE id = 'rproj-1'",
+            [],
+            |r: &rusqlite::Row<'_>| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
     assert_eq!(name, "Remote Project");
     assert_eq!(status, "BACKLOG");
 }
@@ -433,7 +443,11 @@ fn trigger_generates_metadata_then_engine_collects_it() {
     // Enable sync
     {
         let conn = pool.0.lock().unwrap();
-        conn.execute("UPDATE sync_config SET value = '1' WHERE key = 'sync_enabled'", []).unwrap();
+        conn.execute(
+            "UPDATE sync_config SET value = '1' WHERE key = 'sync_enabled'",
+            [],
+        )
+        .unwrap();
     }
 
     // Insert a person (trigger fires)
@@ -466,7 +480,11 @@ fn full_roundtrip_trigger_collect_compress_decompress() {
     // Enable sync
     {
         let conn = pool.0.lock().unwrap();
-        conn.execute("UPDATE sync_config SET value = '1' WHERE key = 'sync_enabled'", []).unwrap();
+        conn.execute(
+            "UPDATE sync_config SET value = '1' WHERE key = 'sync_enabled'",
+            [],
+        )
+        .unwrap();
     }
 
     // Insert data
@@ -540,10 +558,19 @@ fn error_codes_mapping() {
     assert_eq!(AppError::NotFound("x".into()).code(), "NOT_FOUND");
     assert_eq!(AppError::Conflict("x".into()).code(), "CONFLICT");
     assert_eq!(AppError::PartnerImmutable.code(), "PARTNER_IMMUTABLE");
-    assert_eq!(AppError::InvalidStatusTransition("x".into()).code(), "INVALID_STATUS_TRANSITION");
+    assert_eq!(
+        AppError::InvalidStatusTransition("x".into()).code(),
+        "INVALID_STATUS_TRANSITION"
+    );
     assert_eq!(AppError::NoteRequired.code(), "NOTE_REQUIRED");
-    assert_eq!(AppError::AssignmentAlreadyActive.code(), "ASSIGNMENT_ALREADY_ACTIVE");
-    assert_eq!(AppError::AssignmentNotActive.code(), "ASSIGNMENT_NOT_ACTIVE");
+    assert_eq!(
+        AppError::AssignmentAlreadyActive.code(),
+        "ASSIGNMENT_ALREADY_ACTIVE"
+    );
+    assert_eq!(
+        AppError::AssignmentNotActive.code(),
+        "ASSIGNMENT_NOT_ACTIVE"
+    );
 }
 
 #[test]

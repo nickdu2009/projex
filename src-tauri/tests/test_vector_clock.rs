@@ -38,8 +38,12 @@ fn increment_unknown_device_auto_creates() {
 
 #[test]
 fn merge_takes_max_per_device() {
-    let mut c1 = VectorClock { clocks: [("d1".into(), 3), ("d2".into(), 1)].into() };
-    let c2 = VectorClock { clocks: [("d1".into(), 2), ("d2".into(), 5)].into() };
+    let mut c1 = VectorClock {
+        clocks: [("d1".into(), 3), ("d2".into(), 1)].into(),
+    };
+    let c2 = VectorClock {
+        clocks: [("d1".into(), 2), ("d2".into(), 5)].into(),
+    };
     c1.merge(&c2);
     assert_eq!(c1.clocks["d1"], 3); // max(3,2)
     assert_eq!(c1.clocks["d2"], 5); // max(1,5)
@@ -47,8 +51,12 @@ fn merge_takes_max_per_device() {
 
 #[test]
 fn merge_adds_missing_devices() {
-    let mut c1 = VectorClock { clocks: [("d1".into(), 1)].into() };
-    let c2 = VectorClock { clocks: [("d2".into(), 4)].into() };
+    let mut c1 = VectorClock {
+        clocks: [("d1".into(), 1)].into(),
+    };
+    let c2 = VectorClock {
+        clocks: [("d2".into(), 4)].into(),
+    };
     c1.merge(&c2);
     assert_eq!(c1.clocks.len(), 2);
     assert_eq!(c1.clocks["d1"], 1);
@@ -57,7 +65,9 @@ fn merge_adds_missing_devices() {
 
 #[test]
 fn merge_with_empty_is_noop() {
-    let mut c1 = VectorClock { clocks: [("d1".into(), 3)].into() };
+    let mut c1 = VectorClock {
+        clocks: [("d1".into(), 3)].into(),
+    };
     let original = c1.clone();
     c1.merge(&VectorClock::empty());
     assert_eq!(c1, original);
@@ -67,23 +77,33 @@ fn merge_with_empty_is_noop() {
 
 #[test]
 fn happened_before_linear_order() {
-    let c1 = VectorClock { clocks: [("d1".into(), 1)].into() };
-    let c2 = VectorClock { clocks: [("d1".into(), 2)].into() };
+    let c1 = VectorClock {
+        clocks: [("d1".into(), 1)].into(),
+    };
+    let c2 = VectorClock {
+        clocks: [("d1".into(), 2)].into(),
+    };
     assert!(c1.happened_before(&c2));
     assert!(!c2.happened_before(&c1));
 }
 
 #[test]
 fn happened_before_multi_device() {
-    let c1 = VectorClock { clocks: [("d1".into(), 1), ("d2".into(), 1)].into() };
-    let c2 = VectorClock { clocks: [("d1".into(), 2), ("d2".into(), 1)].into() };
+    let c1 = VectorClock {
+        clocks: [("d1".into(), 1), ("d2".into(), 1)].into(),
+    };
+    let c2 = VectorClock {
+        clocks: [("d1".into(), 2), ("d2".into(), 1)].into(),
+    };
     assert!(c1.happened_before(&c2)); // all <=, at least one <
     assert!(!c2.happened_before(&c1));
 }
 
 #[test]
 fn happened_before_equal_clocks_returns_false() {
-    let c1 = VectorClock { clocks: [("d1".into(), 2)].into() };
+    let c1 = VectorClock {
+        clocks: [("d1".into(), 2)].into(),
+    };
     let c2 = c1.clone();
     assert!(!c1.happened_before(&c2)); // 相等 ≠ 之前
 }
@@ -91,7 +111,9 @@ fn happened_before_equal_clocks_returns_false() {
 #[test]
 fn empty_happened_before_any_nonempty() {
     let c1 = VectorClock::empty();
-    let c2 = VectorClock { clocks: [("d1".into(), 1)].into() };
+    let c2 = VectorClock {
+        clocks: [("d1".into(), 1)].into(),
+    };
     assert!(c1.happened_before(&c2));
 }
 
@@ -99,23 +121,35 @@ fn empty_happened_before_any_nonempty() {
 
 #[test]
 fn conflicts_when_both_have_unseen_updates() {
-    let c1 = VectorClock { clocks: [("d1".into(), 2), ("d2".into(), 1)].into() };
-    let c2 = VectorClock { clocks: [("d1".into(), 1), ("d2".into(), 2)].into() };
+    let c1 = VectorClock {
+        clocks: [("d1".into(), 2), ("d2".into(), 1)].into(),
+    };
+    let c2 = VectorClock {
+        clocks: [("d1".into(), 1), ("d2".into(), 2)].into(),
+    };
     assert!(c1.conflicts_with(&c2));
     assert!(c2.conflicts_with(&c1)); // 对称性
 }
 
 #[test]
 fn no_conflict_when_causal() {
-    let c1 = VectorClock { clocks: [("d1".into(), 1)].into() };
-    let c2 = VectorClock { clocks: [("d1".into(), 2)].into() };
+    let c1 = VectorClock {
+        clocks: [("d1".into(), 1)].into(),
+    };
+    let c2 = VectorClock {
+        clocks: [("d1".into(), 2)].into(),
+    };
     assert!(!c1.conflicts_with(&c2));
 }
 
 #[test]
 fn no_conflict_after_merge() {
-    let mut c1 = VectorClock { clocks: [("d1".into(), 2)].into() };
-    let c2 = VectorClock { clocks: [("d2".into(), 3)].into() };
+    let mut c1 = VectorClock {
+        clocks: [("d1".into(), 2)].into(),
+    };
+    let c2 = VectorClock {
+        clocks: [("d2".into(), 3)].into(),
+    };
     assert!(c1.conflicts_with(&c2));
 
     c1.merge(&c2);
@@ -125,7 +159,9 @@ fn no_conflict_after_merge() {
 #[test]
 fn empty_never_conflicts() {
     let c1 = VectorClock::empty();
-    let c2 = VectorClock { clocks: [("d1".into(), 1)].into() };
+    let c2 = VectorClock {
+        clocks: [("d1".into(), 1)].into(),
+    };
     assert!(!c1.conflicts_with(&c2));
 }
 
@@ -133,22 +169,38 @@ fn empty_never_conflicts() {
 
 #[test]
 fn lww_higher_sum_wins() {
-    let c1 = VectorClock { clocks: [("d1".into(), 5)].into() };
-    let c2 = VectorClock { clocks: [("d2".into(), 3)].into() };
-    assert_eq!(c1.compare_for_lww(&c2, "d1", "d2"), std::cmp::Ordering::Greater);
+    let c1 = VectorClock {
+        clocks: [("d1".into(), 5)].into(),
+    };
+    let c2 = VectorClock {
+        clocks: [("d2".into(), 3)].into(),
+    };
+    assert_eq!(
+        c1.compare_for_lww(&c2, "d1", "d2"),
+        std::cmp::Ordering::Greater
+    );
 }
 
 #[test]
 fn lww_equal_sum_breaks_tie_by_device_id() {
-    let c1 = VectorClock { clocks: [("a".into(), 5), ("b".into(), 2)].into() };
-    let c2 = VectorClock { clocks: [("a".into(), 4), ("b".into(), 3)].into() };
+    let c1 = VectorClock {
+        clocks: [("a".into(), 5), ("b".into(), 2)].into(),
+    };
+    let c2 = VectorClock {
+        clocks: [("a".into(), 4), ("b".into(), 3)].into(),
+    };
     // sum=7 vs sum=7 → 按 device_id 字典序: "alpha" < "beta"
-    assert_eq!(c1.compare_for_lww(&c2, "alpha", "beta"), std::cmp::Ordering::Less);
+    assert_eq!(
+        c1.compare_for_lww(&c2, "alpha", "beta"),
+        std::cmp::Ordering::Less
+    );
 }
 
 #[test]
 fn sum_across_all_devices() {
-    let c = VectorClock { clocks: [("d1".into(), 3), ("d2".into(), 7)].into() };
+    let c = VectorClock {
+        clocks: [("d1".into(), 3), ("d2".into(), 7)].into(),
+    };
     assert_eq!(c.sum(), 10);
 }
 
@@ -161,7 +213,9 @@ fn empty_sum_is_zero() {
 
 #[test]
 fn serde_json_roundtrip() {
-    let c = VectorClock { clocks: [("d1".into(), 5), ("d2".into(), 3)].into() };
+    let c = VectorClock {
+        clocks: [("d1".into(), 5), ("d2".into(), 3)].into(),
+    };
     let json = serde_json::to_string(&c).unwrap();
     let c2: VectorClock = serde_json::from_str(&json).unwrap();
     assert_eq!(c, c2);
@@ -172,15 +226,23 @@ fn serde_json_roundtrip() {
 #[test]
 fn three_device_conflict_when_no_direct_sync() {
     // A 同步过 B，B 同步过 C，但 A 和 C 未直接同步
-    let ca = VectorClock { clocks: [("A".into(), 3), ("B".into(), 2)].into() };
-    let cc = VectorClock { clocks: [("B".into(), 2), ("C".into(), 4)].into() };
+    let ca = VectorClock {
+        clocks: [("A".into(), 3), ("B".into(), 2)].into(),
+    };
+    let cc = VectorClock {
+        clocks: [("B".into(), 2), ("C".into(), 4)].into(),
+    };
     assert!(ca.conflicts_with(&cc));
 }
 
 #[test]
 fn three_device_no_conflict_after_full_merge() {
-    let mut ca = VectorClock { clocks: [("A".into(), 3), ("B".into(), 2)].into() };
-    let cb = VectorClock { clocks: [("A".into(), 3), ("B".into(), 2), ("C".into(), 4)].into() };
+    let mut ca = VectorClock {
+        clocks: [("A".into(), 3), ("B".into(), 2)].into(),
+    };
+    let cb = VectorClock {
+        clocks: [("A".into(), 3), ("B".into(), 2), ("C".into(), 4)].into(),
+    };
     ca.merge(&cb); // A 通过 B 的汇总获得了 C 的信息
     assert!(!ca.conflicts_with(&cb));
 }

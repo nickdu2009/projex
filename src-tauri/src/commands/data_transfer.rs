@@ -28,9 +28,6 @@ pub fn cmd_export_json(
 }
 
 #[tauri::command]
-pub fn cmd_import_json(
-    pool: State<DbPool>,
-    req: ImportJsonReq,
-) -> Result<ImportResult, AppError> {
+pub fn cmd_import_json(pool: State<DbPool>, req: ImportJsonReq) -> Result<ImportResult, AppError> {
     import_json_string(&pool, &req.json)
 }

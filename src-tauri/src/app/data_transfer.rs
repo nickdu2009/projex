@@ -122,9 +122,7 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
     let mut stmt = conn
         .prepare("SELECT id, display_name, email, role, note, is_active, created_at, updated_at FROM persons ORDER BY display_name")
         .map_err(|e| AppError::Db(e.to_string()))?;
-    let mut rows = stmt
-        .query([])
-        .map_err(|e| AppError::Db(e.to_string()))?;
+    let mut rows = stmt.query([]).map_err(|e| AppError::Db(e.to_string()))?;
     while let Some(row) = rows.next().map_err(|e| AppError::Db(e.to_string()))? {
         persons.push(ExportPerson {
             id: row.get(0)?,
@@ -141,11 +139,11 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
     // 2. Export partners
     let mut partners = Vec::new();
     let mut stmt = conn
-        .prepare("SELECT id, name, note, is_active, created_at, updated_at FROM partners ORDER BY name")
+        .prepare(
+            "SELECT id, name, note, is_active, created_at, updated_at FROM partners ORDER BY name",
+        )
         .map_err(|e| AppError::Db(e.to_string()))?;
-    let mut rows = stmt
-        .query([])
-        .map_err(|e| AppError::Db(e.to_string()))?;
+    let mut rows = stmt.query([]).map_err(|e| AppError::Db(e.to_string()))?;
     while let Some(row) = rows.next().map_err(|e| AppError::Db(e.to_string()))? {
         partners.push(ExportPartner {
             id: row.get(0)?,
@@ -162,12 +160,10 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
     let mut stmt = conn
         .prepare("SELECT id, name, description, priority, current_status, country_code, partner_id, owner_person_id, start_date, due_date, created_at, updated_at, archived_at FROM projects ORDER BY created_at DESC")
         .map_err(|e| AppError::Db(e.to_string()))?;
-    let mut rows = stmt
-        .query([])
-        .map_err(|e| AppError::Db(e.to_string()))?;
+    let mut rows = stmt.query([]).map_err(|e| AppError::Db(e.to_string()))?;
     while let Some(row) = rows.next().map_err(|e| AppError::Db(e.to_string()))? {
         let project_id: String = row.get(0)?;
-        
+
         // Get tags for this project
         let mut tags = Vec::new();
         let mut tag_stmt = conn
@@ -205,9 +201,7 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
     let mut stmt = conn
         .prepare("SELECT id, project_id, person_id, role, start_at, end_at, created_at FROM assignments ORDER BY start_at DESC")
         .map_err(|e| AppError::Db(e.to_string()))?;
-    let mut rows = stmt
-        .query([])
-        .map_err(|e| AppError::Db(e.to_string()))?;
+    let mut rows = stmt.query([]).map_err(|e| AppError::Db(e.to_string()))?;
     while let Some(row) = rows.next().map_err(|e| AppError::Db(e.to_string()))? {
         assignments.push(ExportAssignment {
             id: row.get(0)?,
@@ -225,9 +219,7 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
     let mut stmt = conn
         .prepare("SELECT id, project_id, from_status, to_status, changed_at, changed_by_person_id, note FROM status_history ORDER BY changed_at DESC")
         .map_err(|e| AppError::Db(e.to_string()))?;
-    let mut rows = stmt
-        .query([])
-        .map_err(|e| AppError::Db(e.to_string()))?;
+    let mut rows = stmt.query([]).map_err(|e| AppError::Db(e.to_string()))?;
     while let Some(row) = rows.next().map_err(|e| AppError::Db(e.to_string()))? {
         status_history.push(ExportStatusHistory {
             id: row.get(0)?,
@@ -245,9 +237,7 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
     let mut stmt = conn
         .prepare("SELECT id, project_id, person_id, content, is_pinned, created_at, updated_at FROM project_comments ORDER BY created_at DESC")
         .map_err(|e| AppError::Db(e.to_string()))?;
-    let mut rows = stmt
-        .query([])
-        .map_err(|e| AppError::Db(e.to_string()))?;
+    let mut rows = stmt.query([]).map_err(|e| AppError::Db(e.to_string()))?;
     while let Some(row) = rows.next().map_err(|e| AppError::Db(e.to_string()))? {
         comments.push(ExportComment {
             id: row.get(0)?,
@@ -271,7 +261,8 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
         comments,
     };
 
-    serde_json::to_string_pretty(&export_root).map_err(|e| AppError::Db(format!("JSON serialization failed: {}", e)))
+    serde_json::to_string_pretty(&export_root)
+        .map_err(|e| AppError::Db(format!("JSON serialization failed: {}", e)))
 }
 
 /// Import data from JSON string. Uses INSERT OR IGNORE for idempotency (duplicate IDs are skipped).
@@ -301,7 +292,11 @@ pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, App
             "INSERT OR IGNORE INTO persons (id, display_name, email, role, note, is_active, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![p.id, p.display_name, p.email, p.role, p.note, p.is_active as i32, p.created_at, p.updated_at],
         ).map_err(|e| AppError::Db(e.to_string()))?;
-        if changed > 0 { persons_count += 1; } else { skipped += 1; }
+        if changed > 0 {
+            persons_count += 1;
+        } else {
+            skipped += 1;
+        }
     }
 
     // 2. Import partners (must come before projects due to FK)
@@ -311,7 +306,11 @@ pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, App
             "INSERT OR IGNORE INTO partners (id, name, note, is_active, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![p.id, p.name, p.note, p.is_active as i32, p.created_at, p.updated_at],
         ).map_err(|e| AppError::Db(e.to_string()))?;
-        if changed > 0 { partners_count += 1; } else { skipped += 1; }
+        if changed > 0 {
+            partners_count += 1;
+        } else {
+            skipped += 1;
+        }
     }
 
     // 3. Import projects
@@ -342,7 +341,11 @@ pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, App
             "INSERT OR IGNORE INTO assignments (id, project_id, person_id, role, start_at, end_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![a.id, a.project_id, a.person_id, a.role, a.start_at, a.end_at, a.created_at],
         ).map_err(|e| AppError::Db(e.to_string()))?;
-        if changed > 0 { assignments_count += 1; } else { skipped += 1; }
+        if changed > 0 {
+            assignments_count += 1;
+        } else {
+            skipped += 1;
+        }
     }
 
     // 5. Import status_history
@@ -352,7 +355,11 @@ pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, App
             "INSERT OR IGNORE INTO status_history (id, project_id, from_status, to_status, changed_at, changed_by_person_id, note) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![h.id, h.project_id, h.from_status, h.to_status, h.changed_at, h.changed_by_person_id, h.note],
         ).map_err(|e| AppError::Db(e.to_string()))?;
-        if changed > 0 { history_count += 1; } else { skipped += 1; }
+        if changed > 0 {
+            history_count += 1;
+        } else {
+            skipped += 1;
+        }
     }
 
     // 6. Import comments (schema version 2 only)
@@ -362,7 +369,11 @@ pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, App
             "INSERT OR IGNORE INTO project_comments (id, project_id, person_id, content, is_pinned, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![c.id, c.project_id, c.person_id, c.content, c.is_pinned as i32, c.created_at, c.updated_at],
         ).map_err(|e| AppError::Db(e.to_string()))?;
-        if changed > 0 { comments_count += 1; } else { skipped += 1; }
+        if changed > 0 {
+            comments_count += 1;
+        } else {
+            skipped += 1;
+        }
     }
 
     tx.commit().map_err(|e| AppError::Db(e.to_string()))?;

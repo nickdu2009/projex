@@ -14,12 +14,18 @@ pub struct AssignmentListReq {
 }
 
 #[tauri::command]
-pub fn cmd_assignment_add_member(pool: State<DbPool>, req: AssignmentAddReq) -> Result<(), AppError> {
+pub fn cmd_assignment_add_member(
+    pool: State<DbPool>,
+    req: AssignmentAddReq,
+) -> Result<(), AppError> {
     assignment_add_member(&pool, req)
 }
 
 #[tauri::command]
-pub fn cmd_assignment_end_member(pool: State<DbPool>, req: AssignmentEndReq) -> Result<(), AppError> {
+pub fn cmd_assignment_end_member(
+    pool: State<DbPool>,
+    req: AssignmentEndReq,
+) -> Result<(), AppError> {
     assignment_end_member(&pool, req)
 }
 

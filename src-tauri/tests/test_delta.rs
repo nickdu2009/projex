@@ -1,7 +1,7 @@
 //! Delta compress / decompress / checksum tests
 
-use app_lib::sync::{Delta, Operation, OperationType};
 use app_lib::sync::VectorClock;
+use app_lib::sync::{Delta, Operation, OperationType};
 
 fn make_sample_ops() -> Vec<Operation> {
     vec![

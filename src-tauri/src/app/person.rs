@@ -168,8 +168,11 @@ pub fn person_deactivate(pool: &DbPool, id: &str) -> Result<PersonDto, AppError>
     let now = Utc::now().to_rfc3339();
     {
         let conn = get_connection(pool);
-        conn.execute("UPDATE persons SET is_active = 0, updated_at = ?1 WHERE id = ?2", params![&now, id])
-            .map_err(|e| AppError::Db(e.to_string()))?;
+        conn.execute(
+            "UPDATE persons SET is_active = 0, updated_at = ?1 WHERE id = ?2",
+            params![&now, id],
+        )
+        .map_err(|e| AppError::Db(e.to_string()))?;
     } // release conn before calling person_get to avoid deadlock
     person_get(pool, id)
 }

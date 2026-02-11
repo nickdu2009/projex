@@ -26,6 +26,6 @@ pub use person::{
 };
 pub use project::{
     project_change_status, project_create, project_get, project_list, project_update,
-    ProjectChangeStatusReq, ProjectCreateReq, ProjectDetailDto, ProjectListItemDto, ProjectListPage,
-    ProjectListReq, ProjectUpdateReq,
+    ProjectChangeStatusReq, ProjectCreateReq, ProjectDetailDto, ProjectListItemDto,
+    ProjectListPage, ProjectListReq, ProjectUpdateReq,
 };

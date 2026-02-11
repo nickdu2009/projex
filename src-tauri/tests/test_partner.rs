@@ -1,10 +1,8 @@
 //! Partner CRUD integration tests
 
 use app_lib::app::{
-    partner_create, partner_deactivate, partner_get, partner_list,
-    partner_projects, partner_update,
-    person_create, project_create,
-    PartnerCreateReq, PartnerUpdateReq,
+    partner_create, partner_deactivate, partner_get, partner_list, partner_projects,
+    partner_update, person_create, project_create, PartnerCreateReq, PartnerUpdateReq,
     PersonCreateReq, ProjectCreateReq,
 };
 use app_lib::infra::db::init_test_db;
@@ -35,20 +33,27 @@ fn create_partner_returns_correct_fields() {
 #[test]
 fn create_partner_trims_name() {
     let pool = init_test_db();
-    let dto = partner_create(&pool, PartnerCreateReq {
-        name: "  Trimmed  ".to_string(),
-        note: None,
-    }).unwrap();
+    let dto = partner_create(
+        &pool,
+        PartnerCreateReq {
+            name: "  Trimmed  ".to_string(),
+            note: None,
+        },
+    )
+    .unwrap();
     assert_eq!(dto.name, "Trimmed");
 }
 
 #[test]
 fn create_partner_empty_name_fails() {
     let pool = init_test_db();
-    let err = partner_create(&pool, PartnerCreateReq {
-        name: "  ".to_string(),
-        note: None,
-    });
+    let err = partner_create(
+        &pool,
+        PartnerCreateReq {
+            name: "  ".to_string(),
+            note: None,
+        },
+    );
     assert!(err.is_err());
     assert_eq!(err.unwrap_err().code(), "VALIDATION_ERROR");
 }
@@ -56,10 +61,14 @@ fn create_partner_empty_name_fails() {
 #[test]
 fn create_partner_defaults_note() {
     let pool = init_test_db();
-    let dto = partner_create(&pool, PartnerCreateReq {
-        name: "NoNote".to_string(),
-        note: None,
-    }).unwrap();
+    let dto = partner_create(
+        &pool,
+        PartnerCreateReq {
+            name: "NoNote".to_string(),
+            note: None,
+        },
+    )
+    .unwrap();
     assert_eq!(dto.note, "");
 }
 
@@ -140,11 +149,15 @@ fn update_partner_partial_fields() {
     let pool = init_test_db();
     let created = partner_create(&pool, make_create_req("UpdateMe")).unwrap();
 
-    let updated = partner_update(&pool, PartnerUpdateReq {
-        id: created.id.clone(),
-        name: Some("Updated Name".to_string()),
-        note: None, // keep original
-    }).unwrap();
+    let updated = partner_update(
+        &pool,
+        PartnerUpdateReq {
+            id: created.id.clone(),
+            name: Some("Updated Name".to_string()),
+            note: None, // keep original
+        },
+    )
+    .unwrap();
 
     assert_eq!(updated.name, "Updated Name");
     assert_eq!(updated.note, "test note"); // unchanged
@@ -153,11 +166,14 @@ fn update_partner_partial_fields() {
 #[test]
 fn update_partner_not_found() {
     let pool = init_test_db();
-    let err = partner_update(&pool, PartnerUpdateReq {
-        id: "ghost".to_string(),
-        name: Some("X".to_string()),
-        note: None,
-    });
+    let err = partner_update(
+        &pool,
+        PartnerUpdateReq {
+            id: "ghost".to_string(),
+            name: Some("X".to_string()),
+            note: None,
+        },
+    );
     assert!(err.is_err());
     assert_eq!(err.unwrap_err().code(), "NOT_FOUND");
 }
@@ -167,11 +183,15 @@ fn update_partner_empty_name_keeps_original() {
     let pool = init_test_db();
     let created = partner_create(&pool, make_create_req("KeepName")).unwrap();
 
-    let updated = partner_update(&pool, PartnerUpdateReq {
-        id: created.id.clone(),
-        name: Some("  ".to_string()),
-        note: None,
-    }).unwrap();
+    let updated = partner_update(
+        &pool,
+        PartnerUpdateReq {
+            id: created.id.clone(),
+            name: Some("  ".to_string()),
+            note: None,
+        },
+    )
+    .unwrap();
     assert_eq!(updated.name, "KeepName");
 }
 
@@ -205,29 +225,49 @@ fn partner_projects_empty_initially() {
 fn partner_projects_returns_associated_projects() {
     let pool = init_test_db();
     let partner = partner_create(&pool, make_create_req("HasProjects")).unwrap();
-    let owner = person_create(&pool, PersonCreateReq {
-        display_name: "Owner".to_string(),
-        email: None, role: None, note: None,
-    }).unwrap();
+    let owner = person_create(
+        &pool,
+        PersonCreateReq {
+            display_name: "Owner".to_string(),
+            email: None,
+            role: None,
+            note: None,
+        },
+    )
+    .unwrap();
 
-    project_create(&pool, ProjectCreateReq {
-        name: "Proj A".to_string(),
-        description: None, priority: None,
-        country_code: "US".to_string(),
-        partner_id: partner.id.clone(),
-        owner_person_id: owner.id.clone(),
-        start_date: None, due_date: None, tags: None,
-        created_by_person_id: None,
-    }).unwrap();
-    project_create(&pool, ProjectCreateReq {
-        name: "Proj B".to_string(),
-        description: None, priority: None,
-        country_code: "CN".to_string(),
-        partner_id: partner.id.clone(),
-        owner_person_id: owner.id.clone(),
-        start_date: None, due_date: None, tags: None,
-        created_by_person_id: None,
-    }).unwrap();
+    project_create(
+        &pool,
+        ProjectCreateReq {
+            name: "Proj A".to_string(),
+            description: None,
+            priority: None,
+            country_code: "US".to_string(),
+            partner_id: partner.id.clone(),
+            owner_person_id: owner.id.clone(),
+            start_date: None,
+            due_date: None,
+            tags: None,
+            created_by_person_id: None,
+        },
+    )
+    .unwrap();
+    project_create(
+        &pool,
+        ProjectCreateReq {
+            name: "Proj B".to_string(),
+            description: None,
+            priority: None,
+            country_code: "CN".to_string(),
+            partner_id: partner.id.clone(),
+            owner_person_id: owner.id.clone(),
+            start_date: None,
+            due_date: None,
+            tags: None,
+            created_by_person_id: None,
+        },
+    )
+    .unwrap();
 
     let projects = partner_projects(&pool, &partner.id).unwrap();
     assert_eq!(projects.len(), 2);
@@ -242,29 +282,49 @@ fn partner_projects_does_not_include_other_partners() {
     let pool = init_test_db();
     let partner_a = partner_create(&pool, make_create_req("PartnerA")).unwrap();
     let partner_b = partner_create(&pool, make_create_req("PartnerB")).unwrap();
-    let owner = person_create(&pool, PersonCreateReq {
-        display_name: "Owner".to_string(),
-        email: None, role: None, note: None,
-    }).unwrap();
+    let owner = person_create(
+        &pool,
+        PersonCreateReq {
+            display_name: "Owner".to_string(),
+            email: None,
+            role: None,
+            note: None,
+        },
+    )
+    .unwrap();
 
-    project_create(&pool, ProjectCreateReq {
-        name: "A's Project".to_string(),
-        description: None, priority: None,
-        country_code: "US".to_string(),
-        partner_id: partner_a.id.clone(),
-        owner_person_id: owner.id.clone(),
-        start_date: None, due_date: None, tags: None,
-        created_by_person_id: None,
-    }).unwrap();
-    project_create(&pool, ProjectCreateReq {
-        name: "B's Project".to_string(),
-        description: None, priority: None,
-        country_code: "US".to_string(),
-        partner_id: partner_b.id.clone(),
-        owner_person_id: owner.id.clone(),
-        start_date: None, due_date: None, tags: None,
-        created_by_person_id: None,
-    }).unwrap();
+    project_create(
+        &pool,
+        ProjectCreateReq {
+            name: "A's Project".to_string(),
+            description: None,
+            priority: None,
+            country_code: "US".to_string(),
+            partner_id: partner_a.id.clone(),
+            owner_person_id: owner.id.clone(),
+            start_date: None,
+            due_date: None,
+            tags: None,
+            created_by_person_id: None,
+        },
+    )
+    .unwrap();
+    project_create(
+        &pool,
+        ProjectCreateReq {
+            name: "B's Project".to_string(),
+            description: None,
+            priority: None,
+            country_code: "US".to_string(),
+            partner_id: partner_b.id.clone(),
+            owner_person_id: owner.id.clone(),
+            start_date: None,
+            due_date: None,
+            tags: None,
+            created_by_person_id: None,
+        },
+    )
+    .unwrap();
 
     let a_projects = partner_projects(&pool, &partner_a.id).unwrap();
     assert_eq!(a_projects.len(), 1);

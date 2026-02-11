@@ -11,7 +11,8 @@ pub fn init_db(db_path: &Path) -> Result<DbPool, crate::error::AppError> {
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| crate::error::AppError::Db(e.to_string()))?;
     }
-    let mut conn = Connection::open(db_path).map_err(|e| crate::error::AppError::Db(e.to_string()))?;
+    let mut conn =
+        Connection::open(db_path).map_err(|e| crate::error::AppError::Db(e.to_string()))?;
     run_migrations(&mut conn)?;
     Ok(DbPool(Mutex::new(conn)))
 }
@@ -36,12 +37,21 @@ fn run_migrations(conn: &mut Connection) -> Result<(), crate::error::AppError> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| crate::error::AppError::Db(e.to_string()))?;
 
-const MIGRATIONS: &[(i32, &str)] = &[
-    (1, include_str!("../../migrations/0001_init.sql")),
-    (2, include_str!("../../migrations/0002_add_person_email_role.sql")),
-    (3, include_str!("../../migrations/0003_add_sync_support.sql")),
-    (4, include_str!("../../migrations/0004_add_project_comments.sql")),
-];
+    const MIGRATIONS: &[(i32, &str)] = &[
+        (1, include_str!("../../migrations/0001_init.sql")),
+        (
+            2,
+            include_str!("../../migrations/0002_add_person_email_role.sql"),
+        ),
+        (
+            3,
+            include_str!("../../migrations/0003_add_sync_support.sql"),
+        ),
+        (
+            4,
+            include_str!("../../migrations/0004_add_project_comments.sql"),
+        ),
+    ];
 
     for (version, sql) in MIGRATIONS {
         if applied.contains(version) {
@@ -61,11 +71,15 @@ const MIGRATIONS: &[(i32, &str)] = &[
         tx.execute_batch(&filtered)
             .map_err(|e| crate::error::AppError::Db(format!("migration v{}: {}", version, e)))?;
 
-        tx.execute("INSERT INTO schema_migrations (version, applied_at) VALUES (?1, datetime('now'))", [version])
-            .map_err(|e| crate::error::AppError::Db(e.to_string()))?;
+        tx.execute(
+            "INSERT INTO schema_migrations (version, applied_at) VALUES (?1, datetime('now'))",
+            [version],
+        )
+        .map_err(|e| crate::error::AppError::Db(e.to_string()))?;
     }
 
-    tx.commit().map_err(|e| crate::error::AppError::Db(e.to_string()))?;
+    tx.commit()
+        .map_err(|e| crate::error::AppError::Db(e.to_string()))?;
     Ok(())
 }
 

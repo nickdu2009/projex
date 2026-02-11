@@ -28,7 +28,11 @@ pub fn run() {
                 )?;
             }
 
-            let data_dir = app.handle().path().app_data_dir().unwrap_or_else(|_| app_data_dir());
+            let data_dir = app
+                .handle()
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| app_data_dir());
             let db_path = data_dir.join("app.db");
             log::info!("DB path: {:?}", db_path);
 

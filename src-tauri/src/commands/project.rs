@@ -15,22 +15,34 @@ pub struct ProjectGetReq {
 }
 
 #[tauri::command]
-pub fn cmd_project_create(pool: State<DbPool>, req: ProjectCreateReq) -> Result<ProjectDetailDto, AppError> {
+pub fn cmd_project_create(
+    pool: State<DbPool>,
+    req: ProjectCreateReq,
+) -> Result<ProjectDetailDto, AppError> {
     project_create(&pool, req)
 }
 
 #[tauri::command]
-pub fn cmd_project_get(pool: State<DbPool>, req: ProjectGetReq) -> Result<ProjectDetailDto, AppError> {
+pub fn cmd_project_get(
+    pool: State<DbPool>,
+    req: ProjectGetReq,
+) -> Result<ProjectDetailDto, AppError> {
     project_get(&pool, &req.id)
 }
 
 #[tauri::command]
-pub fn cmd_project_update(pool: State<DbPool>, req: ProjectUpdateReq) -> Result<ProjectDetailDto, AppError> {
+pub fn cmd_project_update(
+    pool: State<DbPool>,
+    req: ProjectUpdateReq,
+) -> Result<ProjectDetailDto, AppError> {
     project_update(&pool, req)
 }
 
 #[tauri::command]
-pub fn cmd_project_list(pool: State<DbPool>, req: Option<ProjectListReq>) -> Result<ProjectListPage, AppError> {
+pub fn cmd_project_list(
+    pool: State<DbPool>,
+    req: Option<ProjectListReq>,
+) -> Result<ProjectListPage, AppError> {
     project_list(&pool, req.unwrap_or_default())
 }
 

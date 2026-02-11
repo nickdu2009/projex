@@ -151,8 +151,11 @@ pub fn partner_deactivate(pool: &DbPool, id: &str) -> Result<PartnerDto, AppErro
     let now = Utc::now().to_rfc3339();
     {
         let conn = get_connection(pool);
-        conn.execute("UPDATE partners SET is_active = 0, updated_at = ?1 WHERE id = ?2", params![&now, id])
-            .map_err(|e| AppError::Db(e.to_string()))?;
+        conn.execute(
+            "UPDATE partners SET is_active = 0, updated_at = ?1 WHERE id = ?2",
+            params![&now, id],
+        )
+        .map_err(|e| AppError::Db(e.to_string()))?;
     } // release conn before calling partner_get to avoid deadlock
     partner_get(pool, id)
 }

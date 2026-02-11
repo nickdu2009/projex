@@ -1,13 +1,10 @@
 //! Person CRUD integration tests
 
 use app_lib::app::{
-    partner_create, person_create, person_deactivate, person_get, person_list, person_update,
-    person_current_projects, person_all_projects,
-    project_create, project_change_status,
-    assignment_add_member, assignment_end_member,
-    PartnerCreateReq, PersonCreateReq, PersonUpdateReq,
-    ProjectCreateReq, ProjectChangeStatusReq,
-    AssignmentAddReq, AssignmentEndReq,
+    assignment_add_member, assignment_end_member, partner_create, person_all_projects,
+    person_create, person_current_projects, person_deactivate, person_get, person_list,
+    person_update, project_change_status, project_create, AssignmentAddReq, AssignmentEndReq,
+    PartnerCreateReq, PersonCreateReq, PersonUpdateReq, ProjectChangeStatusReq, ProjectCreateReq,
 };
 use app_lib::infra::db::init_test_db;
 
@@ -41,24 +38,31 @@ fn create_person_returns_dto_with_correct_fields() {
 #[test]
 fn create_person_trims_display_name() {
     let pool = init_test_db();
-    let dto = person_create(&pool, PersonCreateReq {
-        display_name: "  Bob  ".to_string(),
-        email: None,
-        role: None,
-        note: None,
-    }).unwrap();
+    let dto = person_create(
+        &pool,
+        PersonCreateReq {
+            display_name: "  Bob  ".to_string(),
+            email: None,
+            role: None,
+            note: None,
+        },
+    )
+    .unwrap();
     assert_eq!(dto.display_name, "Bob");
 }
 
 #[test]
 fn create_person_empty_name_fails() {
     let pool = init_test_db();
-    let err = person_create(&pool, PersonCreateReq {
-        display_name: "   ".to_string(),
-        email: None,
-        role: None,
-        note: None,
-    });
+    let err = person_create(
+        &pool,
+        PersonCreateReq {
+            display_name: "   ".to_string(),
+            email: None,
+            role: None,
+            note: None,
+        },
+    );
     assert!(err.is_err());
     let e = err.unwrap_err();
     assert_eq!(e.code(), "VALIDATION_ERROR");
@@ -67,12 +71,16 @@ fn create_person_empty_name_fails() {
 #[test]
 fn create_person_defaults_optional_fields() {
     let pool = init_test_db();
-    let dto = person_create(&pool, PersonCreateReq {
-        display_name: "Charlie".to_string(),
-        email: None,
-        role: None,
-        note: None,
-    }).unwrap();
+    let dto = person_create(
+        &pool,
+        PersonCreateReq {
+            display_name: "Charlie".to_string(),
+            email: None,
+            role: None,
+            note: None,
+        },
+    )
+    .unwrap();
     assert_eq!(dto.email, "");
     assert_eq!(dto.role, "");
     assert_eq!(dto.note, "");
@@ -148,13 +156,17 @@ fn update_person_partial_fields() {
     let pool = init_test_db();
     let created = person_create(&pool, make_create_req("Eve")).unwrap();
 
-    let updated = person_update(&pool, PersonUpdateReq {
-        id: created.id.clone(),
-        display_name: Some("Eve Updated".to_string()),
-        email: None, // keep original
-        role: Some("lead".to_string()),
-        note: None,
-    }).unwrap();
+    let updated = person_update(
+        &pool,
+        PersonUpdateReq {
+            id: created.id.clone(),
+            display_name: Some("Eve Updated".to_string()),
+            email: None, // keep original
+            role: Some("lead".to_string()),
+            note: None,
+        },
+    )
+    .unwrap();
 
     assert_eq!(updated.display_name, "Eve Updated");
     assert_eq!(updated.email, "eve@test.com"); // unchanged
@@ -164,13 +176,16 @@ fn update_person_partial_fields() {
 #[test]
 fn update_person_not_found() {
     let pool = init_test_db();
-    let err = person_update(&pool, PersonUpdateReq {
-        id: "ghost".to_string(),
-        display_name: Some("X".to_string()),
-        email: None,
-        role: None,
-        note: None,
-    });
+    let err = person_update(
+        &pool,
+        PersonUpdateReq {
+            id: "ghost".to_string(),
+            display_name: Some("X".to_string()),
+            email: None,
+            role: None,
+            note: None,
+        },
+    );
     assert!(err.is_err());
     assert_eq!(err.unwrap_err().code(), "NOT_FOUND");
 }
@@ -181,13 +196,17 @@ fn update_person_empty_name_keeps_original() {
     let created = person_create(&pool, make_create_req("Frank")).unwrap();
 
     // Sending empty string should keep original name (filter logic)
-    let updated = person_update(&pool, PersonUpdateReq {
-        id: created.id.clone(),
-        display_name: Some("  ".to_string()),
-        email: None,
-        role: None,
-        note: None,
-    }).unwrap();
+    let updated = person_update(
+        &pool,
+        PersonUpdateReq {
+            id: created.id.clone(),
+            display_name: Some("  ".to_string()),
+            email: None,
+            role: None,
+            note: None,
+        },
+    )
+    .unwrap();
     assert_eq!(updated.display_name, "Frank");
 }
 
@@ -229,22 +248,30 @@ fn all_projects_empty_for_new_person() {
 // ──────────────────────── Seed helper for project tests ────────────────────────
 
 fn seed_project_for_person(pool: &app_lib::infra::DbPool, owner_id: &str) -> String {
-    let partner = partner_create(pool, PartnerCreateReq {
-        name: format!("Partner-{}", uuid::Uuid::new_v4()),
-        note: None,
-    }).unwrap();
-    let proj = project_create(pool, ProjectCreateReq {
-        name: format!("Project-{}", uuid::Uuid::new_v4()),
-        description: None,
-        priority: None,
-        country_code: "US".to_string(),
-        partner_id: partner.id,
-        owner_person_id: owner_id.to_string(),
-        start_date: None,
-        due_date: None,
-        tags: None,
-        created_by_person_id: None,
-    }).unwrap();
+    let partner = partner_create(
+        pool,
+        PartnerCreateReq {
+            name: format!("Partner-{}", uuid::Uuid::new_v4()),
+            note: None,
+        },
+    )
+    .unwrap();
+    let proj = project_create(
+        pool,
+        ProjectCreateReq {
+            name: format!("Project-{}", uuid::Uuid::new_v4()),
+            description: None,
+            priority: None,
+            country_code: "US".to_string(),
+            partner_id: partner.id,
+            owner_person_id: owner_id.to_string(),
+            start_date: None,
+            due_date: None,
+            tags: None,
+            created_by_person_id: None,
+        },
+    )
+    .unwrap();
     proj.id
 }
 
@@ -270,16 +297,23 @@ fn current_projects_excludes_archived() {
     let proj_id = seed_project_for_person(&pool, &owner.id);
 
     // Archive the project: BACKLOG → ARCHIVED (requires note)
-    project_change_status(&pool, ProjectChangeStatusReq {
-        project_id: proj_id,
-        to_status: "ARCHIVED".to_string(),
-        note: Some("done".to_string()),
-        changed_by_person_id: None,
-        if_match_updated_at: None,
-    }).unwrap();
+    project_change_status(
+        &pool,
+        ProjectChangeStatusReq {
+            project_id: proj_id,
+            to_status: "ARCHIVED".to_string(),
+            note: Some("done".to_string()),
+            changed_by_person_id: None,
+            if_match_updated_at: None,
+        },
+    )
+    .unwrap();
 
     let projects = person_current_projects(&pool, &owner.id).unwrap();
-    assert!(projects.is_empty(), "Archived projects should be excluded from current_projects");
+    assert!(
+        projects.is_empty(),
+        "Archived projects should be excluded from current_projects"
+    );
 }
 
 #[test]
@@ -290,20 +324,31 @@ fn current_projects_excludes_ended_assignments() {
     let proj_id = seed_project_for_person(&pool, &owner.id);
 
     // Add member then end assignment
-    assignment_add_member(&pool, AssignmentAddReq {
-        project_id: proj_id.clone(),
-        person_id: member.id.clone(),
-        role: None,
-        start_at: None,
-    }).unwrap();
-    assignment_end_member(&pool, AssignmentEndReq {
-        project_id: proj_id,
-        person_id: member.id.clone(),
-        end_at: None,
-    }).unwrap();
+    assignment_add_member(
+        &pool,
+        AssignmentAddReq {
+            project_id: proj_id.clone(),
+            person_id: member.id.clone(),
+            role: None,
+            start_at: None,
+        },
+    )
+    .unwrap();
+    assignment_end_member(
+        &pool,
+        AssignmentEndReq {
+            project_id: proj_id,
+            person_id: member.id.clone(),
+            end_at: None,
+        },
+    )
+    .unwrap();
 
     let projects = person_current_projects(&pool, &member.id).unwrap();
-    assert!(projects.is_empty(), "Ended assignments should not appear in current_projects");
+    assert!(
+        projects.is_empty(),
+        "Ended assignments should not appear in current_projects"
+    );
 }
 
 #[test]
@@ -314,20 +359,32 @@ fn all_projects_includes_ended_assignments() {
     let proj_id = seed_project_for_person(&pool, &owner.id);
 
     // Add then end member
-    assignment_add_member(&pool, AssignmentAddReq {
-        project_id: proj_id.clone(),
-        person_id: member.id.clone(),
-        role: None,
-        start_at: None,
-    }).unwrap();
-    assignment_end_member(&pool, AssignmentEndReq {
-        project_id: proj_id,
-        person_id: member.id.clone(),
-        end_at: None,
-    }).unwrap();
+    assignment_add_member(
+        &pool,
+        AssignmentAddReq {
+            project_id: proj_id.clone(),
+            person_id: member.id.clone(),
+            role: None,
+            start_at: None,
+        },
+    )
+    .unwrap();
+    assignment_end_member(
+        &pool,
+        AssignmentEndReq {
+            project_id: proj_id,
+            person_id: member.id.clone(),
+            end_at: None,
+        },
+    )
+    .unwrap();
 
     let projects = person_all_projects(&pool, &member.id).unwrap();
-    assert_eq!(projects.len(), 1, "all_projects should include ended assignments");
+    assert_eq!(
+        projects.len(),
+        1,
+        "all_projects should include ended assignments"
+    );
     assert!(projects[0].last_involved_at.is_some());
 }
 

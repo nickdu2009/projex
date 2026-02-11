@@ -80,7 +80,7 @@ pub struct ProjectListReq {
     pub owner_person_ids: Option<Vec<String>>,
     pub participant_person_ids: Option<Vec<String>>,
     pub tags: Option<Vec<String>>,
-    pub sort_by: Option<String>,   // "updatedAt" | "priority" | "dueDate"
+    pub sort_by: Option<String>, // "updatedAt" | "priority" | "dueDate"
     pub sort_order: Option<String>, // "asc" | "desc"
     pub limit: Option<i32>,
     pub offset: Option<i32>,
@@ -255,7 +255,9 @@ pub fn project_get(pool: &DbPool, project_id: &str) -> Result<ProjectDetailDto, 
         .unwrap_or_else(|_| "?".to_string());
 
     let partner_name: String = conn
-        .query_row("SELECT name FROM partners WHERE id = ?1", [&proj.6], |r| r.get(0))
+        .query_row("SELECT name FROM partners WHERE id = ?1", [&proj.6], |r| {
+            r.get(0)
+        })
         .unwrap_or_else(|_| "?".to_string());
 
     let mut assignments = Vec::new();
@@ -555,12 +557,11 @@ pub fn project_list(pool: &DbPool, req: ProjectListReq) -> Result<ProjectListPag
     };
 
     // --- COUNT total ---
-    let count_sql = format!(
-        "SELECT COUNT(*) FROM projects p{}",
-        where_clause
-    );
-    let count_params: Vec<&dyn rusqlite::types::ToSql> =
-        bind_values.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
+    let count_sql = format!("SELECT COUNT(*) FROM projects p{}", where_clause);
+    let count_params: Vec<&dyn rusqlite::types::ToSql> = bind_values
+        .iter()
+        .map(|v| v as &dyn rusqlite::types::ToSql)
+        .collect();
     let total: i64 = conn
         .query_row(&count_sql, count_params.as_slice(), |r| r.get(0))
         .map_err(|e| AppError::Db(e.to_string()))?;
@@ -608,17 +609,24 @@ pub fn project_list(pool: &DbPool, req: ProjectListReq) -> Result<ProjectListPag
     all_params.push(Value::Integer(limit as i64));
     all_params.push(Value::Integer(offset as i64));
 
-    let all_refs: Vec<&dyn rusqlite::types::ToSql> =
-        all_params.iter().map(|v| v as &dyn rusqlite::types::ToSql).collect();
+    let all_refs: Vec<&dyn rusqlite::types::ToSql> = all_params
+        .iter()
+        .map(|v| v as &dyn rusqlite::types::ToSql)
+        .collect();
 
-    let mut stmt = conn.prepare(&data_sql).map_err(|e| AppError::Db(e.to_string()))?;
-    let mut rows = stmt.query(all_refs.as_slice()).map_err(|e| AppError::Db(e.to_string()))?;
+    let mut stmt = conn
+        .prepare(&data_sql)
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    let mut rows = stmt
+        .query(all_refs.as_slice())
+        .map_err(|e| AppError::Db(e.to_string()))?;
     let mut items = Vec::new();
     while let Some(row) = rows.next().map_err(|e| AppError::Db(e.to_string()))? {
         let id: String = row.get(0)?;
         let mut tags = Vec::new();
         {
-            let mut tag_stmt = conn.prepare("SELECT tag FROM project_tags WHERE project_id = ?1")?;
+            let mut tag_stmt =
+                conn.prepare("SELECT tag FROM project_tags WHERE project_id = ?1")?;
             let tag_rows = tag_stmt.query_map([&id], |r| r.get::<_, String>(0))?;
             for tr in tag_rows {
                 if let Ok(t) = tr {
@@ -652,8 +660,9 @@ pub fn project_change_status(
     pool: &DbPool,
     req: ProjectChangeStatusReq,
 ) -> Result<ProjectDetailDto, AppError> {
-    let to_status = parse_status(&req.to_status)
-        .ok_or_else(|| AppError::InvalidStatusTransition(format!("unknown status: {}", req.to_status)))?;
+    let to_status = parse_status(&req.to_status).ok_or_else(|| {
+        AppError::InvalidStatusTransition(format!("unknown status: {}", req.to_status))
+    })?;
 
     {
         let conn = get_connection(pool);

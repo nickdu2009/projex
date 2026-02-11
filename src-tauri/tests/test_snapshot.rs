@@ -178,7 +178,8 @@ fn count_table(pool: &app_lib::infra::DbPool, table: &str) -> i64 {
         &format!("SELECT COUNT(*) FROM {}", table),
         [],
         |r: &rusqlite::Row<'_>| r.get(0),
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 fn seed_full_data(pool: &app_lib::infra::DbPool) {
@@ -192,7 +193,8 @@ fn seed_full_data(pool: &app_lib::infra::DbPool) {
         "INSERT INTO partners (id, name, note, is_active, created_at, updated_at, _version)
          VALUES ('pt1', 'ACME', '', 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1)",
         [],
-    ).unwrap();
+    )
+    .unwrap();
     conn.execute(
         "INSERT INTO projects (id, name, description, priority, current_status, country_code, partner_id, owner_person_id, start_date, due_date, created_at, updated_at, archived_at, _version)
          VALUES ('proj1', 'Demo', 'desc', 3, 'BACKLOG', 'CN', 'pt1', 'p1', '2026-01-01', '2026-12-31', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', NULL, 1)",
@@ -246,18 +248,22 @@ fn restore_snapshot_full_flow() {
 
     // Verify content
     let conn = pool.0.lock().unwrap();
-    let name: String = conn.query_row(
-        "SELECT display_name FROM persons WHERE id = 'p1'",
-        [],
-        |r: &rusqlite::Row<'_>| r.get(0),
-    ).unwrap();
+    let name: String = conn
+        .query_row(
+            "SELECT display_name FROM persons WHERE id = 'p1'",
+            [],
+            |r: &rusqlite::Row<'_>| r.get(0),
+        )
+        .unwrap();
     assert_eq!(name, "Alice");
 
-    let proj_name: String = conn.query_row(
-        "SELECT name FROM projects WHERE id = 'proj1'",
-        [],
-        |r: &rusqlite::Row<'_>| r.get(0),
-    ).unwrap();
+    let proj_name: String = conn
+        .query_row(
+            "SELECT name FROM projects WHERE id = 'proj1'",
+            [],
+            |r: &rusqlite::Row<'_>| r.get(0),
+        )
+        .unwrap();
     assert_eq!(proj_name, "Demo");
 }
 
@@ -316,5 +322,8 @@ fn restore_snapshot_fails_for_invalid_json() {
 
     let err = mgr.restore_snapshot(&snap);
     assert!(err.is_err());
-    assert!(err.unwrap_err().to_string().contains("Invalid snapshot data"));
+    assert!(err
+        .unwrap_err()
+        .to_string()
+        .contains("Invalid snapshot data"));
 }

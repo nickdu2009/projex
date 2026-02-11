@@ -35,12 +35,18 @@ pub fn cmd_person_update(pool: State<DbPool>, req: PersonUpdateReq) -> Result<Pe
 }
 
 #[tauri::command]
-pub fn cmd_person_deactivate(pool: State<DbPool>, req: PersonGetReq) -> Result<PersonDto, AppError> {
+pub fn cmd_person_deactivate(
+    pool: State<DbPool>,
+    req: PersonGetReq,
+) -> Result<PersonDto, AppError> {
     person_deactivate(&pool, &req.id)
 }
 
 #[tauri::command]
-pub fn cmd_person_list(pool: State<DbPool>, req: Option<PersonListReq>) -> Result<Vec<PersonDto>, AppError> {
+pub fn cmd_person_list(
+    pool: State<DbPool>,
+    req: Option<PersonListReq>,
+) -> Result<Vec<PersonDto>, AppError> {
     person_list(&pool, req.and_then(|r| r.only_active).unwrap_or(true))
 }
 
