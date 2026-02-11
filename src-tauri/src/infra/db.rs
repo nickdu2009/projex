@@ -2,9 +2,11 @@
 
 use rusqlite::Connection;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::Mutex;
 
-pub struct DbPool(pub Mutex<Connection>);
+#[derive(Clone)]
+pub struct DbPool(pub Arc<Mutex<Connection>>);
 
 /// Initialize DB at path, run migrations, return managed pool.
 pub fn init_db(db_path: &Path) -> Result<DbPool, crate::error::AppError> {
@@ -14,7 +16,7 @@ pub fn init_db(db_path: &Path) -> Result<DbPool, crate::error::AppError> {
     let mut conn =
         Connection::open(db_path).map_err(|e| crate::error::AppError::Db(e.to_string()))?;
     run_migrations(&mut conn)?;
-    Ok(DbPool(Mutex::new(conn)))
+    Ok(DbPool(Arc::new(Mutex::new(conn))))
 }
 
 fn run_migrations(conn: &mut Connection) -> Result<(), crate::error::AppError> {
@@ -50,6 +52,10 @@ fn run_migrations(conn: &mut Connection) -> Result<(), crate::error::AppError> {
         (
             4,
             include_str!("../../migrations/0004_add_project_comments.sql"),
+        ),
+        (
+            5,
+            include_str!("../../migrations/0005_add_auto_sync_interval.sql"),
         ),
     ];
 
@@ -92,5 +98,5 @@ pub fn get_connection(pool: &DbPool) -> std::sync::MutexGuard<'_, Connection> {
 pub fn init_test_db() -> DbPool {
     let mut conn = Connection::open_in_memory().expect("open in-memory DB");
     run_migrations(&mut conn).expect("run migrations");
-    DbPool(Mutex::new(conn))
+    DbPool(Arc::new(Mutex::new(conn)))
 }

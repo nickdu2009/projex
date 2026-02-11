@@ -1,9 +1,9 @@
 //! S3 client wrapper for sync operations
 
 use aws_config::meta::region::RegionProviderChain;
+use aws_sdk_s3::config::Region;
 use aws_sdk_s3::Client;
 use std::time::Instant;
-use aws_sdk_s3::config::Region;
 
 pub struct S3SyncClient {
     client: Client,
@@ -217,4 +217,3 @@ fn infer_region_from_endpoint(endpoint: &str) -> Option<String> {
 
     None
 }
-

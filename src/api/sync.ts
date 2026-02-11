@@ -9,6 +9,7 @@ export interface SyncConfigDto {
   secret_key_masked?: string;
   device_id: string;
   last_sync?: string;
+  auto_sync_interval_minutes: number;
 }
 
 export interface SyncConfigUpdateDto {
@@ -17,6 +18,7 @@ export interface SyncConfigUpdateDto {
   endpoint?: string;
   access_key?: string;
   secret_key?: string;
+  auto_sync_interval_minutes: number;
 }
 
 export interface SyncStatusDto {

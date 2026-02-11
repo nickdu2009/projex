@@ -26,13 +26,22 @@ export function Layout() {
   const [syncEnabled, setSyncEnabled] = useState(false);
 
   useEffect(() => {
-    syncManager.getConfig().then((cfg) => {
-      setSyncEnabled(cfg.enabled);
-      if (cfg.enabled) {
-        syncManager.initialize();
-      }
-    }).catch(() => {});
-  }, []);
+    let cancelled = false;
+    syncManager
+      .getConfig()
+      .then((cfg) => {
+        if (cancelled) return;
+        setSyncEnabled(cfg.enabled);
+        if (cfg.enabled) {
+          syncManager.initialize();
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // Refresh config when route changes so Settings toggles take effect.
+  }, [location.pathname]);
 
   return (
     <AppShell

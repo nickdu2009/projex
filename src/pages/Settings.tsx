@@ -1,4 +1,18 @@
-import { ActionIcon, Button, Group, Paper, SegmentedControl, Stack, Text, Title, TextInput, Switch, Divider } from '@mantine/core';
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Divider,
+  Group,
+  NumberInput,
+  Paper,
+  SegmentedControl,
+  Stack,
+  Switch,
+  Text,
+  TextInput,
+  Title,
+} from '@mantine/core';
 import { IconDownload, IconUpload, IconCloud, IconCloudUpload, IconRestore, IconEye, IconEyeOff, IconEdit } from '@tabler/icons-react';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +46,7 @@ export function Settings() {
   const [endpoint, setEndpoint] = useState('');
   const [accessKey, setAccessKey] = useState('');
   const [syncConfigEditing, setSyncConfigEditing] = useState(false);
+  const [autoSyncIntervalMinutes, setAutoSyncIntervalMinutes] = useState<number>(1);
   const [secretKey, setSecretKey] = useState('');
   const [secretKeySaved, setSecretKeySaved] = useState(false);
   const [secretKeyMasked, setSecretKeyMasked] = useState<string | null>(null);
@@ -44,6 +59,7 @@ export function Settings() {
   const [syncing, setSyncing] = useState(false);
   const [snapshotting, setSnapshotting] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [pendingChanges, setPendingChanges] = useState<number | null>(null);
 
   const getErrorCodeAndMessage = (e: unknown): { code?: string; message: string } => {
     // Tauri invoke errors may come in different shapes across versions:
@@ -73,6 +89,7 @@ export function Settings() {
 
   useEffect(() => {
     loadSyncConfig();
+    loadSyncStatus();
   }, []);
 
   useEffect(() => {
@@ -100,6 +117,7 @@ export function Settings() {
       setBucket(config.bucket || '');
       setEndpoint(config.endpoint || '');
       setAccessKey(config.access_key || '');
+      setAutoSyncIntervalMinutes(Math.max(1, Number(config.auto_sync_interval_minutes || 1)));
       setSecretKey('');
       setSecretKeySaved(Boolean(config.has_secret_key));
       setSecretKeyMasked(config.secret_key_masked || null);
@@ -107,6 +125,16 @@ export function Settings() {
       setSecretKeyEditBaseline(null);
     } catch (error: unknown) {
       logger.error('Load sync config failed:', error);
+    }
+  };
+
+  const loadSyncStatus = async () => {
+    try {
+      const status = await syncManager.getStatus();
+      setPendingChanges(status.pending_changes);
+    } catch (error: unknown) {
+      logger.error('Load sync status failed:', error);
+      setPendingChanges(null);
     }
   };
 
@@ -199,6 +227,7 @@ export function Settings() {
       const baseline = (secretKeyEditBaseline ?? '').trim();
       const current = secretKey.trim();
       const shouldSendSecretKey = syncConfigEditing && current !== '' && current !== baseline;
+      const minutes = Math.max(1, Math.floor(autoSyncIntervalMinutes || 1));
       await syncManager.updateConfig({
         enabled: syncEnabled,
         bucket,
@@ -207,6 +236,7 @@ export function Settings() {
         accessKey: accessKey.trim() === '' && hasExistingAccessKey ? undefined : accessKey,
         // Only send secret key when user is explicitly editing it.
         secretKey: shouldSendSecretKey ? secretKey : undefined,
+        autoSyncIntervalMinutes: minutes,
       });
       showSuccess(t('settings.sync.configSaved'));
       await loadSyncConfig();
@@ -263,6 +293,7 @@ export function Settings() {
       }
 
       await syncManager.setEnabled(nextEnabled);
+      await loadSyncStatus();
     } catch (e: unknown) {
       // Backend may reject enabling if config incomplete.
       const { message } = getErrorCodeAndMessage(e);
@@ -302,6 +333,7 @@ export function Settings() {
       showError(message || t('settings.sync.syncFailed'));
     } finally {
       setSyncing(false);
+      await loadSyncStatus();
     }
   };
 
@@ -314,6 +346,7 @@ export function Settings() {
       showError((e as { message?: string })?.message ?? t('settings.sync.snapshotFailed'));
     } finally {
       setSnapshotting(false);
+      await loadSyncStatus();
     }
   };
 
@@ -326,6 +359,7 @@ export function Settings() {
       showError((e as { message?: string })?.message ?? t('settings.sync.restoreFailed'));
     } finally {
       setRestoring(false);
+      await loadSyncStatus();
     }
   };
 
@@ -361,9 +395,14 @@ export function Settings() {
             </Text>
 
             {syncConfig && (
-              <Text size="xs" c="dimmed" mb="md">
-                {t('settings.sync.deviceId', { id: syncConfig.device_id })}
-              </Text>
+              <Group gap="xs" mb="md">
+                <Text size="xs" c="dimmed">
+                  {t('settings.sync.deviceId', { id: syncConfig.device_id })}
+                </Text>
+                <Badge variant="light" size="sm" color={pendingChanges && pendingChanges > 0 ? 'orange' : 'gray'}>
+                  {t('settings.sync.pendingChanges', { count: pendingChanges ?? 0 })}
+                </Badge>
+              </Group>
             )}
           </div>
 
@@ -391,6 +430,18 @@ export function Settings() {
             value={accessKey}
             onChange={(e) => setAccessKey(e.currentTarget.value)}
             required
+            readOnly={!syncConfigEditing}
+          />
+
+          <NumberInput
+            label={t('settings.sync.autoSyncInterval')}
+            description={t('settings.sync.autoSyncIntervalDesc')}
+            value={autoSyncIntervalMinutes}
+            onChange={(value) => setAutoSyncIntervalMinutes(typeof value === 'number' ? value : 1)}
+            min={1}
+            step={1}
+            allowDecimal={false}
+            clampBehavior="strict"
             readOnly={!syncConfigEditing}
           />
 

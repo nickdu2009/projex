@@ -5,6 +5,7 @@ pub mod error;
 pub mod infra;
 pub mod sync;
 
+use crate::commands::sync::SyncRuntime;
 use infra::init_db;
 use std::path::PathBuf;
 use tauri::Manager;
@@ -40,7 +41,14 @@ pub fn run() {
                 log::error!("DB init failed: {}", e);
                 e
             })?;
-            app.manage(pool);
+            app.manage(pool.clone());
+
+            // Backend auto-sync scheduler (timer lives in Rust).
+            let runtime = SyncRuntime::new();
+            app.manage(runtime.clone());
+            tauri::async_runtime::spawn(async move {
+                runtime.refresh_scheduler(pool).await;
+            });
 
             Ok(())
         })

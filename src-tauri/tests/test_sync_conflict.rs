@@ -462,7 +462,8 @@ fn trigger_generates_metadata_then_engine_collects_it() {
 
     // Collect delta via engine
     let engine = DeltaSyncEngine::new(&pool, device_id);
-    let delta = engine.collect_local_delta().unwrap();
+    let collected = engine.collect_local_delta().unwrap();
+    let delta = collected.delta;
 
     assert_eq!(delta.operations.len(), 1);
     assert_eq!(delta.operations[0].table_name, "persons");
@@ -499,7 +500,8 @@ fn full_roundtrip_trigger_collect_compress_decompress() {
 
     // Collect → compress → decompress
     let engine = DeltaSyncEngine::new(&pool, device_id);
-    let delta = engine.collect_local_delta().unwrap();
+    let collected = engine.collect_local_delta().unwrap();
+    let delta = collected.delta;
     let compressed = delta.compress().unwrap();
     let decompressed = Delta::decompress(&compressed).unwrap();
 

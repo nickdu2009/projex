@@ -3,7 +3,7 @@
  * 负责协调前端与后端的同步操作
  */
 
-import { syncApi, type SyncConfigDto } from '../api/sync';
+import { syncApi, type SyncConfigDto, type SyncStatusDto } from '../api/sync';
 import { logger } from '../utils/logger';
 
 export interface SyncState {
@@ -56,6 +56,13 @@ export class SyncManager {
     return await syncApi.getConfig();
   }
 
+  /**
+   * 获取同步状态（含 pending changes）
+   */
+  async getStatus(): Promise<SyncStatusDto> {
+    return await syncApi.getStatus();
+  }
+
   async setEnabled(enabled: boolean): Promise<void> {
     await syncApi.setEnabled(enabled);
     await this.initialize();
@@ -78,6 +85,7 @@ export class SyncManager {
     endpoint?: string;
     accessKey?: string;
     secretKey?: string;
+    autoSyncIntervalMinutes: number;
   }): Promise<void> {
     await syncApi.updateConfig({
       enabled: config.enabled,
@@ -85,6 +93,7 @@ export class SyncManager {
       endpoint: config.endpoint,
       access_key: config.accessKey,
       secret_key: config.secretKey,
+      auto_sync_interval_minutes: config.autoSyncIntervalMinutes,
     });
 
     // 重新初始化

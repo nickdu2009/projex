@@ -482,6 +482,8 @@ flowchart TB
   - `sync_full`（完整同步：上传本地变更 + 下载远端变更）
   - `sync_create_snapshot` / `sync_restore_snapshot`
 
+> Sync 配置包含 `auto_sync_interval_minutes`（单位：分钟，整数，默认 1），用于前端自动同步定时。
+
 ### 13.6 事务边界（必须）
 - `project_change_status`：**一个事务内**完成：
   - 校验状态机允许的跃迁

@@ -58,7 +58,8 @@ fn collect_empty_delta_when_no_changes() {
     let (pool, device_id) = setup();
     let engine = DeltaSyncEngine::new(&pool, device_id);
 
-    let delta = engine.collect_local_delta().unwrap();
+    let collected = engine.collect_local_delta().unwrap();
+    let delta = collected.delta;
     assert!(delta.operations.is_empty());
     assert_eq!(delta.checksum.len(), 64);
 }
@@ -73,7 +74,8 @@ fn collect_delta_picks_up_unsynced_metadata() {
     insert_sync_metadata(&pool, "persons", "p-001", "UPDATE", &device_id);
 
     let engine = DeltaSyncEngine::new(&pool, device_id);
-    let delta = engine.collect_local_delta().unwrap();
+    let collected = engine.collect_local_delta().unwrap();
+    let delta = collected.delta;
 
     assert_eq!(delta.operations.len(), 3);
 }
@@ -88,14 +90,16 @@ fn mark_synced_excludes_from_next_collect() {
     let engine = DeltaSyncEngine::new(&pool, device_id.clone());
 
     // First collect: 2 operations
-    let delta1 = engine.collect_local_delta().unwrap();
+    let collected1 = engine.collect_local_delta().unwrap();
+    let delta1 = collected1.delta;
     assert_eq!(delta1.operations.len(), 2);
 
     // Mark all as synced (up to id=2)
     engine.mark_synced(2).unwrap();
 
     // Second collect: 0 operations
-    let delta2 = engine.collect_local_delta().unwrap();
+    let collected2 = engine.collect_local_delta().unwrap();
+    let delta2 = collected2.delta;
     assert!(delta2.operations.is_empty());
 }
 
@@ -112,7 +116,8 @@ fn mark_synced_partial() {
     // Only mark first one as synced
     engine.mark_synced(1).unwrap();
 
-    let delta = engine.collect_local_delta().unwrap();
+    let collected = engine.collect_local_delta().unwrap();
+    let delta = collected.delta;
     assert_eq!(delta.operations.len(), 2); // p-002 and p-003 remain
 }
 
@@ -123,7 +128,8 @@ fn delta_checksum_matches_operations() {
     insert_sync_metadata(&pool, "persons", "p-001", "INSERT", &device_id);
 
     let engine = DeltaSyncEngine::new(&pool, device_id);
-    let delta = engine.collect_local_delta().unwrap();
+    let collected = engine.collect_local_delta().unwrap();
+    let delta = collected.delta;
 
     // Checksum should match recalculated value
     let recalculated = app_lib::sync::Delta::calculate_checksum(&delta.operations);

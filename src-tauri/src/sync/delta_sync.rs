@@ -37,6 +37,13 @@ pub struct Delta {
     pub checksum: String,
 }
 
+/// Local delta collected from `sync_metadata`.
+/// `max_sync_meta_id` is used to mark those rows as synced after successful upload.
+pub struct CollectedLocalDelta {
+    pub delta: Delta,
+    pub max_sync_meta_id: Option<i64>,
+}
+
 impl Delta {
     /// Calculate checksum of operations
     pub fn calculate_checksum(operations: &[Operation]) -> String {
@@ -95,7 +102,7 @@ impl<'a> DeltaSyncEngine<'a> {
     }
 
     /// Collect local changes into delta
-    pub fn collect_local_delta(&self) -> Result<Delta, AppError> {
+    pub fn collect_local_delta(&self) -> Result<CollectedLocalDelta, AppError> {
         let conn = self
             .pool
             .0
@@ -112,8 +119,11 @@ impl<'a> DeltaSyncEngine<'a> {
             )
             .map_err(|e: rusqlite::Error| AppError::Db(e.to_string()))?;
 
+        let mut max_sync_meta_id: Option<i64> = None;
         let operations: Vec<Operation> = stmt
             .query_map([], |row: &rusqlite::Row<'_>| {
+                let meta_id: i64 = row.get(0)?;
+                max_sync_meta_id = Some(max_sync_meta_id.map_or(meta_id, |m| m.max(meta_id)));
                 let op_type = match row.get::<_, String>(3)?.as_str() {
                     "INSERT" => OperationType::Insert,
                     "UPDATE" => OperationType::Update,
@@ -141,13 +151,16 @@ impl<'a> DeltaSyncEngine<'a> {
 
         let checksum = Delta::calculate_checksum(&operations);
 
-        Ok(Delta {
-            id: 0, // Will be assigned by sync manager
-            operations,
-            device_id: self.device_id.clone(),
-            vector_clock,
-            created_at: chrono::Utc::now().to_rfc3339(),
-            checksum,
+        Ok(CollectedLocalDelta {
+            delta: Delta {
+                id: 0, // Will be assigned by sync manager
+                operations,
+                device_id: self.device_id.clone(),
+                vector_clock,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                checksum,
+            },
+            max_sync_meta_id,
         })
     }
 
