@@ -6,6 +6,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useCallback } from 'react';
 import { Group, Paper, Text, UnstyledButton } from '@mantine/core';
 import type { FC } from 'react';
+import i18n from '../i18n';
 
 export interface SlashCommandItem {
   id: string;
@@ -83,7 +84,7 @@ export const SlashCommandList = forwardRef<SlashCommandListRef, SlashCommandList
       return (
         <Paper shadow="md" radius="md" p="xs" withBorder>
           <Text size="xs" c="dimmed" ta="center" py={4}>
-            No matching commands
+            {i18n.t('slash.noMatching')}
           </Text>
         </Paper>
       );
