@@ -13,9 +13,10 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { IconDownload, IconUpload, IconCloud, IconCloudUpload, IconRestore, IconEye, IconEyeOff, IconEdit } from '@tabler/icons-react';
+import { IconDownload, IconUpload, IconCloud, IconCloudUpload, IconRestore, IconEye, IconEyeOff, IconEdit, IconFileText } from '@tabler/icons-react';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { getVersion } from '@tauri-apps/api/app';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
@@ -33,6 +34,7 @@ type AppErrorLike = { code?: string; message?: string };
 
 export function Settings() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -648,6 +650,28 @@ export function Settings() {
             ]}
             style={{ alignSelf: 'flex-start' }}
           />
+        </Stack>
+      </Paper>
+
+      <Divider />
+
+      {/* Application Logs */}
+      <Paper>
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>
+            {t('settings.logs.title')}
+          </Text>
+          <Text size="xs" c="dimmed" mb="xs">
+            {t('settings.logs.description')}
+          </Text>
+          <Button
+            leftSection={<IconFileText size={18} />}
+            variant="light"
+            onClick={() => navigate('/logs')}
+            style={{ alignSelf: 'flex-start' }}
+          >
+            {t('settings.logs.viewButton')}
+          </Button>
         </Stack>
       </Paper>
 

@@ -40,6 +40,12 @@ pub enum AppError {
 
     #[error("Sync error: {0}")]
     Sync(String),
+
+    #[error("Log file error: {0}")]
+    LogFile(String),
+
+    #[error("Log I/O error: {0}")]
+    LogIo(String),
 }
 
 impl AppError {
@@ -57,6 +63,8 @@ impl AppError {
             Self::SyncConfigIncomplete => "SYNC_CONFIG_INCOMPLETE",
             Self::SyncBucketNotOwned => "SYNC_BUCKET_NOT_OWNED",
             Self::Sync(_) => "SYNC_ERROR",
+            Self::LogFile(_) => "LOG_INVALID_FILE",
+            Self::LogIo(_) => "LOG_IO_ERROR",
         }
     }
 
@@ -72,6 +80,12 @@ impl AppError {
 impl From<rusqlite::Error> for AppError {
     fn from(e: rusqlite::Error) -> Self {
         AppError::Db(e.to_string())
+    }
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(e: std::io::Error) -> Self {
+        AppError::LogIo(e.to_string())
     }
 }
 

@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './pages/Layout';
+import { Logs } from './pages/Logs';
 import { PartnerDetail } from './pages/PartnerDetail';
 import { PartnerForm } from './pages/PartnerForm';
 import { PartnersList } from './pages/PartnersList';
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="partners/:id" element={<PartnerDetail />} />
           <Route path="partners/:id/edit" element={<PartnerForm />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="logs" element={<Logs />} />
         </Route>
       </Routes>
     </BrowserRouter>

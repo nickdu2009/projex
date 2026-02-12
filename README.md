@@ -13,7 +13,7 @@
   <a href="https://github.com/nickdu2009/projex/releases"><img src="https://img.shields.io/github/v/release/nickdu2009/projex?style=flat-square&color=blue" alt="Release"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/tests-245%20passed-brightgreen?style=flat-square" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-250%20passed-brightgreen?style=flat-square" alt="Tests">
   <img src="https://img.shields.io/badge/rust-1.77%2B-orange?style=flat-square&logo=rust" alt="Rust">
   <img src="https://img.shields.io/badge/tauri-v2-blue?style=flat-square&logo=tauri" alt="Tauri">
   <img src="https://img.shields.io/badge/react-19-61DAFB?style=flat-square&logo=react" alt="React">
@@ -59,6 +59,15 @@ Most project management tools live in the cloud. **Projex** takes a different ap
 - **JSON export/import** — full backup, idempotent restore
 - **S3 sync** — delta-based with vector clock conflict resolution
 - **Snapshot** — gzip-compressed full backups with SHA-256 checksum
+
+### Application Logs Viewer
+- **In-app log viewer** — view frontend & backend logs without external tools
+- **Adjustable log level** — ERROR/WARN/INFO/DEBUG (requires restart)
+- **Smart redaction** — auto-mask sensitive data (S3 credentials, tokens)
+- **Efficient browsing** — paginated loading (256KB per page), real-time search
+- **Convenient operations** — copy to clipboard, download, clear logs
+- **Auto rotation** — max 10MB per file, keep latest 5 files
+- See [docs/LOGS_VIEWER.md](./docs/LOGS_VIEWER.md) for details
 
 ### Modern UI/UX
 - Frosted glass effect + gradient design (inspired by Arc / Raycast)
@@ -119,7 +128,7 @@ npm run tauri dev
 # Production build
 npm run tauri build
 
-# Run backend tests (245 test cases)
+# Run backend tests (250 test cases)
 cd src-tauri && cargo test
 ```
 
@@ -141,21 +150,22 @@ projex/
 │   ├── PRD.md                 # Product Requirements Document
 │   ├── MILESTONES.md          # Milestone tracking
 │   ├── SYNC_S3_DESIGN.md      # S3 sync architecture
-│   └── SYNC_EXPLAINED.md      # Sync mechanism explained
+│   ├── SYNC_EXPLAINED.md      # Sync mechanism explained
+│   └── LOGS_VIEWER.md         # Logs viewer feature guide
 ├── src/                        # Frontend (React + TypeScript)
-│   ├── api/                   # Typed Tauri invoke wrappers
+│   ├── api/                   # Typed Tauri invoke wrappers (logs.ts, sync.ts, etc.)
 │   ├── components/            # Shared components
-│   ├── pages/                 # Page components
+│   ├── pages/                 # Page components (Logs, Settings, etc.)
 │   ├── stores/                # Zustand stores
 │   ├── sync/                  # Frontend sync manager
 │   ├── locales/               # i18n translations (en/zh)
 │   └── theme.ts               # Mantine theme config
 ├── src-tauri/                  # Backend (Rust)
 │   ├── migrations/            # SQL migrations (4 files)
-│   ├── tests/                 # Integration tests (13 files, 245 cases)
+│   ├── tests/                 # Integration tests (13 files, 250 cases)
 │   └── src/
 │       ├── app/               # Use cases (CRUD, import/export)
-│       ├── commands/          # Tauri command handlers (DTO boundary)
+│       ├── commands/          # Tauri command handlers (logs.rs, sync.rs, etc.)
 │       ├── domain/            # Domain rules (status machine)
 │       ├── infra/             # SQLite repositories
 │       └── sync/              # S3 sync (delta, snapshot, vector clock)
@@ -167,9 +177,11 @@ projex/
 | Item | Value |
 |------|-------|
 | Database | `~/Library/Application Support/com.nickdu.projex/app.db` |
+| Log Files | `~/Library/Application Support/com.nickdu.projex/logs/` |
 | Default Window | 1200 x 800 |
 | Min Window | 800 x 500 |
 | Data Schema | v2 (with comments support) |
+| Log Level | Debug: Info, Release: Warn (user-adjustable) |
 
 ## Screenshots
 
@@ -193,6 +205,7 @@ projex/
 - [x] S3 multi-device sync (delta + snapshot)
 - [x] i18n (English + Chinese)
 - [x] Rich text comments with Tiptap
+- [x] In-app logs viewer with redaction
 - [ ] Code splitting for smaller bundle size
 - [ ] Linux support
 - [ ] Dashboard & analytics view

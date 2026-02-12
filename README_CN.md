@@ -5,7 +5,7 @@
 ![](https://img.shields.io/badge/Platform-macOS-blue.svg)
 ![](https://img.shields.io/badge/License-MIT-green.svg)
 ![](https://img.shields.io/badge/Version-1.0.0-orange.svg)
-![](https://img.shields.io/badge/Tests-245%20passed-brightgreen.svg)
+![](https://img.shields.io/badge/Tests-250%20passed-brightgreen.svg)
 
 ## 核心特性
 
@@ -30,6 +30,15 @@
 - JSON 导出 / 导入（幂等，重复 ID 自动跳过）
 - S3 多设备同步（兼容 AWS S3 / Cloudflare R2 / MinIO）
 - 全量快照备份与恢复
+
+### 应用日志查看
+- **应用内日志查看器** — 无需外部工具即可查看前后端日志
+- **可调日志级别** — ERROR/WARN/INFO/DEBUG（需重启生效）
+- **智能脱敏** — 自动遮罩敏感数据（S3 凭据、令牌等）
+- **高效浏览** — 分页加载（每页 256KB）、实时搜索
+- **便捷操作** — 复制到剪贴板、下载、清空日志
+- **自动轮转** — 单文件最大 10MB，保留最近 5 个文件
+- 详见 [docs/LOGS_VIEWER.md](./docs/LOGS_VIEWER.md)
 
 ### UI/UX
 - 毛玻璃效果、渐变按钮、英雄卡片

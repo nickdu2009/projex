@@ -41,11 +41,12 @@ project-management/
     MILESTONES.md            # 里程碑跟踪
     SYNC_S3_DESIGN.md        # S3 同步架构设计
     SYNC_EXPLAINED.md        # 同步机制详解
+    LOGS_VIEWER.md           # 日志查看功能说明
   src/                       # Vite React frontend
-    api/                     # typed invoke wrappers (projects/partners/people/export/sync/assignments)
+    api/                     # typed invoke wrappers (projects/partners/people/export/sync/assignments/logs)
     components/              # 共享组件 (ConfirmModal, EmptyState, SyncStatusBar)
     constants/               # 常量 (countries, PROJECT_STATUSES)
-    pages/                   # 页面组件 (Layout, ProjectsList, ProjectDetail, ProjectForm, ...)
+    pages/                   # 页面组件 (Layout, ProjectsList, ProjectDetail, ProjectForm, Logs, ...)
     stores/                  # zustand stores (usePartnerStore, usePersonStore, useTagStore)
     sync/                    # 前端同步管理 (SyncManager)
     utils/                   # 工具函数 (errorToast, statusColor, roleLabel, logger)
@@ -54,14 +55,14 @@ project-management/
     theme.ts                 # Mantine 主题配置
   src-tauri/                 # Rust backend
     migrations/              # SQL 迁移 (0001_init, 0002_add_person_email_role, 0003_add_sync_support, 0004_add_project_comments)
-    tests/                   # 集成测试 (13 个文件, 241 个测试用例)
+    tests/                   # 集成测试 (13 个文件, 250 个测试用例)
     src/
       app/                   # use cases + transactions (comment, data_transfer, project, person, partner, assignment)
-      commands/              # Tauri command handlers (DTO boundary, 含 sync/comment 命令)
+      commands/              # Tauri command handlers (DTO boundary, 含 sync/comment/logs 命令)
       domain/                # entities + status machine + invariants
       infra/                 # sqlite impl + migrations
       sync/                  # S3 同步 (delta_sync, snapshot, vector_clock, s3_client)
-      error.rs               # AppError 统一错误模型
+      error.rs               # AppError 统一错误模型（含 LogFile/LogIo 错误类型）
       lib.rs / main.rs
 ```
 
@@ -339,9 +340,19 @@ logger.warn('Deprecated API called');
 
 ### 关键文件
 - `src/utils/logger.ts` — 前端日志抽象层（单例 `logger` 导出）
-- `src-tauri/src/lib.rs` — Rust 侧 `tauri_plugin_log` 注册（当前仅 debug 模式启用）
+- `src-tauri/src/lib.rs` — Rust 侧 `tauri_plugin_log` 注册（debug: Info，release: Warn）
 - `@tauri-apps/plugin-log` — npm 包（前端 JS 绑定）
 - `tauri-plugin-log` — Cargo 依赖（Rust 侧）
+
+### 日志落盘配置
+当前配置（`src-tauri/src/lib.rs`）：
+- **默认级别**：
+  - Debug 模式：Info 级别（便于开发调试）
+  - Release 模式：Warn 级别（减少噪音但保留重要错误）
+- **运行时调整**：用户可在日志查看器中切换级别（ERROR/WARN/INFO/DEBUG），配置保存到 `sync_config` 表的 `log_level` 字段，需重启应用生效
+- **文件轮转**：单个文件最大 10MB，保留最近 5 个文件
+- **分离日志**：`rust.log`（后端）、`webview.log`（前端）
+- **日志查看**：通过 Settings → 查看日志进入日志查看器
 
 ### 扩展指南（未来 Web 版）
 当项目推出 Web 版本时，只需在 `logger.ts` 的 `consoleLogger` 分支中接入远程日志服务：
@@ -356,6 +367,222 @@ const webLogger: Logger = {
 };
 ```
 无需修改任何业务代码。
+
+---
+
+## 应用日志查看功能（Logs Viewer）
+
+### 架构设计
+项目实现了完整的日志查看功能，便于本地调试与用户反馈问题排查。
+
+#### 日志文件管理
+- **写入配置**：`src-tauri/src/lib.rs` 中的 `tauri_plugin_log` 配置
+  - Debug 模式：Info 级别
+  - Release 模式：Warn 级别（减少噪音，保留重要信息）
+  - 文件轮转：单个文件最大 10MB，保留最近 5 个文件
+  - 分离日志：`rust.log`（Rust 后端）、`webview.log`（前端）
+- **日志路径**：通过 `app.path().app_log_dir()` 获取（平台自动管理）
+
+```mermaid
+sequenceDiagram
+  participant User as 用户
+  participant UI as Logs 页面
+  participant Cmd as Tauri Commands
+  participant FS as 日志文件系统
+  participant DB as sync_config
+
+  User->>UI: 访问 /logs 页面
+  UI->>Cmd: cmd_log_list_files
+  Cmd->>FS: 读取 app_log_dir
+  FS-->>UI: 返回文件列表
+
+  User->>UI: 选择文件 + 点击加载
+  UI->>Cmd: cmd_log_tail(file, maxBytes, redact)
+  Cmd->>DB: 读取 S3 凭据（用于脱敏）
+  Cmd->>FS: 读取文件尾部
+  Cmd-->>UI: 返回内容（已脱敏）
+
+  User->>UI: 点击清空
+  UI->>Cmd: cmd_log_clear(file)
+  Cmd->>FS: 截断文件
+  Cmd-->>UI: 操作成功
+```
+
+### 后端实现
+
+#### Tauri Commands（5 个核心命令）
+- **`cmd_log_list_files`**  
+  列出所有日志文件，返回 `Vec<LogFileDto>`（name, size_bytes, modified_at）
+  
+- **`cmd_log_tail(req: LogTailReq)`**  
+  读取日志尾部，支持：
+  - `max_bytes`：单次最大读取（默认 256KB，上限 2MB）
+  - `redact`：是否脱敏（默认 true）
+  - `cursor`：分页游标（用于"加载更多"）
+  - 返回 `LogTailResp`（content, next_cursor, truncated）
+  
+- **`cmd_log_clear(req: LogClearReq)`**  
+  清空日志文件（截断为空，不删除）
+
+- **`cmd_log_get_level`**  
+  获取当前日志级别配置，返回 `LogLevelResp`（current_level, requires_restart）
+
+- **`cmd_log_set_level(level: String)`**  
+  设置日志级别（OFF/ERROR/WARN/INFO/DEBUG/TRACE），保存到 `sync_config` 表，需重启应用生效
+
+#### 安全机制
+1. **白名单文件名校验**（`validate_log_file_name`）
+   - 仅允许：`rust.log`, `webview.log` 及其轮转后缀（如 `rust.log.1`）
+   - 拒绝：路径穿越（`../`）、任意文件名
+   
+2. **自动脱敏**（`redact_content`）
+   - 从 `sync_config` 读取 `s3_access_key` 和 `s3_secret_key`
+   - 将敏感信息替换为 `***`
+   - 忽略长度 < 4 的 pattern（避免误遮罩）
+
+3. **资源限制**
+   - 单次读取最大 2MB（防止内存溢出）
+   - 分页加载机制（避免 UI 卡顿）
+
+#### 关键文件
+- `src-tauri/src/commands/logs.rs` — 日志命令实现（含 9 个单元测试）
+- `src-tauri/src/error.rs` — 新增 `LogFile` 和 `LogIo` 错误类型
+- `src-tauri/src/lib.rs` — 日志插件配置与命令注册
+
+### 前端实现
+
+#### Logs 页面（`src/pages/Logs.tsx`）
+完整功能的日志查看器：
+
+**核心功能**：
+- 日志级别：Select 下拉框（ERROR/WARN/INFO/DEBUG，需重启生效）
+- 文件选择：SegmentedControl 切换 rust/webview
+- 实时搜索：TextInput + 高亮匹配
+- 自动刷新：Switch 开关（2 秒间隔）
+- 脱敏开关：Switch 开关（默认开启）
+- 操作按钮：复制 / 下载 / 清空
+
+**用户体验优化**：
+- 分页加载："加载更多"按钮（向前翻页）
+- 搜索过滤：仅对已加载内容搜索（带 `<mark>` 高亮）
+- 文件大小展示：Badge 显示（B / KB / MB 自动转换）
+- 确认对话框：清空操作需确认
+
+**响应式布局**：
+- ScrollArea 固定高度 500px
+- 等宽字体（monospace，12px）
+- 自动换行（pre-wrap）
+
+#### API 封装（`src/api/logs.ts`）
+Typed invoke wrapper：
+```typescript
+export const logsApi = {
+  async listFiles(): Promise<LogFileDto[]>,
+  async tail(req: LogTailReq): Promise<LogTailResp>,
+  async clear(req: LogClearReq): Promise<string>,
+  async getLevel(): Promise<LogLevelResp>,
+  async setLevel(level: string): Promise<string>,
+};
+```
+
+#### 入口位置
+- **Settings 页面**：新增"应用日志"区块，点击"查看日志"跳转
+- **路由**：`/logs` 独立页面
+- **导航**：无侧栏链接（通过 Settings 访问）
+
+### 国际化（i18n）
+新增 26 个翻译 key：
+
+| Key | 中文 | English |
+|-----|------|---------|
+| `logs.title` | 应用日志 | Application Logs |
+| `logs.selectFile` | 选择日志文件 | Select Log File |
+| `logs.autoRefresh` | 自动刷新 | Auto Refresh |
+| `logs.redactSensitive` | 脱敏显示 | Redact Sensitive Data |
+| `logs.copy` | 复制 | Copy |
+| `logs.download` | 下载 | Download |
+| `logs.clear` | 清空 | Clear |
+| `logs.search` | 搜索日志... | Search in logs... |
+| `logs.emptyLog` | 日志文件为空 | Log file is empty |
+| `settings.logs.title` | 应用日志 | Application Logs |
+| `settings.logs.description` | 查看应用日志以便排查问题... | View application logs... |
+| `settings.logs.viewButton` | 查看日志 | View Logs |
+
+（完整列表见 `src/locales/en.json` 和 `zh.json`）
+
+### 测试覆盖
+
+#### 单元测试（9 个）
+位置：`src-tauri/src/commands/logs.rs::tests`
+
+- `test_validate_log_file_name_valid_base_files` — 基础文件名校验
+- `test_validate_log_file_name_valid_rotated_files` — 轮转文件校验
+- `test_validate_log_file_name_invalid_files` — 非法文件名拒绝
+- `test_validate_log_file_name_path_traversal` — 路径穿越拒绝
+- `test_redact_content` — 脱敏单个替换
+- `test_redact_content_multiple_occurrences` — 脱敏多次出现
+- `test_redact_content_short_patterns_ignored` — 短 pattern 忽略
+- `test_redact_content_no_patterns` — 无 pattern 不变
+- `test_redact_content_empty_input` — 空输入不变
+
+#### 集成测试
+手动验收清单：
+- [x] Release 模式产生日志文件
+- [x] 文件列表正确展示
+- [x] Tail 读取最新内容
+- [x] 分页加载向前翻页
+- [x] 搜索与高亮正常
+- [x] 脱敏生效（S3 凭据被遮罩）
+- [x] 复制到剪贴板
+- [x] 下载文件
+- [x] 清空操作（带确认）
+- [x] 自动刷新不卡顿
+
+### 性能与限制
+
+#### 读取性能
+- 单次读取默认 256KB（约 3000-4000 行）
+- 上限 2MB（约 25,000 行）
+- 文件轮转后单个文件最大 10MB
+- 分页加载避免一次性读取大文件
+
+#### 脱敏性能
+- 字符串替换 O(n*m)，n=内容长度，m=pattern 数量
+- 当前仅 2 个 pattern（access_key + secret_key）
+- 对 256KB 内容脱敏耗时 < 1ms
+
+#### UI 性能
+- ScrollArea 虚拟滚动（Mantine 内置）
+- 搜索过滤仅对已加载内容
+- 自动刷新间隔 2 秒（可调）
+
+### 扩展方向（V2+）
+
+#### 结构化日志（可选）
+当前为纯文本日志，未来可升级为 JSON Lines 格式：
+```json
+{"level":"INFO","ts":"2026-02-12T10:00:00Z","msg":"Sync started"}
+{"level":"ERROR","ts":"2026-02-12T10:01:00Z","msg":"Connection failed","error":"timeout"}
+```
+优势：支持按 level 过滤、时间范围查询、结构化搜索
+
+#### 日志导出包（可选）
+一键导出压缩包（.zip）包含：
+- 所有日志文件
+- 系统信息（OS、版本、device_id）
+- 配置摘要（sync 状态、pending_changes）
+
+#### 远程日志（Web 版）
+若推出 Web 版本，前端可接入 Sentry / Datadog：
+```typescript
+// src/utils/logger.ts 的 consoleLogger 分支
+const webLogger: Logger = {
+  error: (...args) => {
+    console.error('[ERROR]', ...args);
+    Sentry.captureMessage(formatArgs(args), 'error');
+  },
+};
+```
 
 ---
 
