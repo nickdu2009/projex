@@ -57,7 +57,7 @@ Most project management tools live in the cloud. **Projex** takes a different ap
 ### Data Sovereignty
 - **SQLite** — fully offline, zero cloud dependency
 - **JSON export/import** — full backup, idempotent restore
-- **S3 sync** — delta-based with vector clock conflict resolution
+- **S3 sync** — delta-based sync with checksum verification, per-device cursor, and anti-reupload protection
 - **Snapshot** — gzip-compressed full backups with SHA-256 checksum
 
 ### Application Logs Viewer
@@ -68,6 +68,29 @@ Most project management tools live in the cloud. **Projex** takes a different ap
 - **Convenient operations** — copy to clipboard, download, clear logs
 - **Auto rotation** — max 10MB per file, keep latest 5 files
 - See [docs/LOGS_VIEWER.md](./docs/LOGS_VIEWER.md) for details
+
+### Sync Status (2026-02)
+
+```mermaid
+flowchart LR
+  LocalWrite[Local DB changes] --> Metadata[sync_metadata triggers]
+  Metadata --> Upload[Upload delta.gz]
+  Upload --> Pull[List & download remote deltas]
+  Pull --> Verify[Checksum verify]
+  Verify --> Apply[Transactional apply]
+  Apply --> AntiLoop[Mark generated metadata synced]
+  AntiLoop --> Cursor[Advance per-device cursor]
+```
+
+| Capability | Status | Notes |
+|---|---|---|
+| Local delta collect/upload | ✅ | In production |
+| Remote delta download/apply | ✅ | In `cmd_sync_full` |
+| `project_tags` / `project_comments` sync | ✅ | Includes composite-key delete for tags |
+| Anti-reupload (ping-pong suppression) | ✅ | `mark_remote_applied_operations_synced` |
+| Minimal LWW guard | ✅ | Skip when `remote_version < local_version` |
+| Optional E2E encryption | 🚧 | Planned in M7 |
+| Snapshot rotation/cleanup | 🚧 | Planned in M7 |
 
 ### Modern UI/UX
 - Frosted glass effect + gradient design (inspired by Arc / Raycast)
@@ -134,6 +157,15 @@ cd src-tauri && cargo test
 
 The database is auto-created on first launch with all migrations applied.
 
+### Local MinIO (Dev Sync)
+
+```bash
+cp .env.minio.example .env.minio
+docker compose --env-file .env.minio -f docker-compose.minio.yml up -d
+```
+
+See [docs/SYNC_ENV_PROFILES.md](./docs/SYNC_ENV_PROFILES.md) for profile details and MinIO test setup.
+
 ### First Use
 
 1. **Create a Partner** — Partners are organizations you work with
@@ -151,6 +183,7 @@ projex/
 │   ├── MILESTONES.md          # Milestone tracking
 │   ├── SYNC_S3_DESIGN.md      # S3 sync architecture
 │   ├── SYNC_EXPLAINED.md      # Sync mechanism explained
+│   ├── SYNC_ENV_PROFILES.md   # Dev MinIO / Prod S3-R2 profiles
 │   └── LOGS_VIEWER.md         # Logs viewer feature guide
 ├── src/                        # Frontend (React + TypeScript)
 │   ├── api/                   # Typed Tauri invoke wrappers (logs.ts, sync.ts, etc.)
@@ -161,7 +194,7 @@ projex/
 │   ├── locales/               # i18n translations (en/zh)
 │   └── theme.ts               # Mantine theme config
 ├── src-tauri/                  # Backend (Rust)
-│   ├── migrations/            # SQL migrations (4 files)
+│   ├── migrations/            # SQL migrations (5 files)
 │   ├── tests/                 # Integration tests (13 files, 250 cases)
 │   └── src/
 │       ├── app/               # Use cases (CRUD, import/export)
@@ -203,9 +236,14 @@ projex/
 - [x] People & Partner management
 - [x] JSON export / import
 - [x] S3 multi-device sync (delta + snapshot)
+- [x] Remote delta apply + anti-reupload closed loop
 - [x] i18n (English + Chinese)
 - [x] Rich text comments with Tiptap
 - [x] In-app logs viewer with redaction
+- [ ] M7-P1: Optional E2E encryption for sync payloads
+- [ ] M7-P2: Snapshot selection sorting + stronger delta key uniqueness
+- [ ] M7-P3: Sync observability (phase metrics + structured logs)
+- [ ] M7-P4: Large-bucket scan/performance optimization
 - [ ] Code splitting for smaller bundle size
 - [ ] Linux support
 - [ ] Dashboard & analytics view

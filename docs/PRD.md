@@ -444,7 +444,11 @@ flowchart TB
 - 使用 `schema_migrations(version, applied_at)` 表记录迁移版本。
 - 迁移脚本按序号执行，例如：
   - `0001_init.sql`
-  - `0002_add_project_tags.sql`
+  - `0002_add_person_email_role.sql`
+  - `0003_add_sync_support.sql`
+  - `0004_add_project_comments.sql`
+  - `0005_add_auto_sync_interval.sql`
+- 后续新增迁移必须按序追加，不修改已发布迁移文件。
 - 应用启动时（Rust side）：
   - 打开 DB（如不存在则创建）
   - `BEGIN IMMEDIATE` 执行 migrations（保证单实例一致性）
@@ -477,12 +481,15 @@ flowchart TB
   - `export_json`（输出符合 `schemaVersion` 的 JSON）
   - `import_json`（幂等导入 JSON）
 - **Sync（S3 同步）**
-  - `sync_get_config` / `sync_update_config`
+  - `sync_get_config` / `sync_update_config` / `sync_set_enabled`
+  - `sync_reveal_secret_key`（仅设置页手动展示）
+  - `sync_test_connection`
   - `sync_get_status`
   - `sync_full`（完整同步：上传本地变更 + 下载远端变更）
   - `sync_create_snapshot` / `sync_restore_snapshot`
 
-> Sync 配置包含 `auto_sync_interval_minutes`（单位：分钟，整数，默认 1），用于前端自动同步定时。
+> Sync 配置包含 `auto_sync_interval_minutes`（单位：分钟，整数，默认 1）。
+> 定时同步由 **Rust 后端 scheduler** 执行；前端负责配置、状态展示与手动触发。
 
 ### 13.6 事务边界（必须）
 - `project_change_status`：**一个事务内**完成：
@@ -550,7 +557,12 @@ type AppError = {
     | "NOTE_REQUIRED"
     | "ASSIGNMENT_ALREADY_ACTIVE"
     | "ASSIGNMENT_NOT_ACTIVE"
-    | "DB_ERROR";
+    | "DB_ERROR"
+    | "SYNC_CONFIG_INCOMPLETE"
+    | "SYNC_BUCKET_NOT_OWNED"
+    | "SYNC_ERROR"
+    | "LOG_INVALID_FILE"
+    | "LOG_IO_ERROR";
   message: string;
   details?: Record<string, unknown>;
 };
@@ -867,7 +879,96 @@ type CommentListReq = { projectId: string };
 ```
 **排序**：`is_pinned DESC, created_at DESC`
 
-#### 13.9.5 前端 `invoke()` 包装建议
+##### G) Sync（S3 多设备同步）
+
+**1) `cmd_sync_get_config`**
+```ts
+type SyncConfigDto = {
+  enabled: boolean;
+  bucket?: string;
+  endpoint?: string;
+  access_key?: string;
+  has_secret_key?: boolean;
+  secret_key_masked?: string;
+  device_id: string;
+  last_sync?: string;
+  auto_sync_interval_minutes: number; // >= 1
+};
+```
+
+**2) `cmd_sync_update_config`**
+```ts
+type SyncConfigUpdateReq = {
+  enabled: boolean;
+  bucket: string;
+  endpoint?: string;
+  access_key?: string;
+  secret_key?: string;
+  auto_sync_interval_minutes?: number; // optional, keep existing if omitted
+};
+// Returns: string
+```
+**行为/校验**
+- `access_key` / `secret_key` 若为空字符串，不覆盖已存值（防误清空）。
+- 更新成功后重启后端 scheduler，使新配置即时生效。
+
+**3) `cmd_sync_set_enabled`**
+```ts
+type SyncEnableReq = { enabled: boolean };
+// Returns: string
+```
+**行为/校验**
+- 当 `enabled=true` 时，必须存在非空 `s3_bucket/s3_access_key/s3_secret_key`，否则 `SYNC_CONFIG_INCOMPLETE`。
+- 启停后端 scheduler（不依赖前端定时器）。
+
+**4) `cmd_sync_reveal_secret_key`**
+```ts
+// Req: void
+// Resp: string (plain secret key, settings 页受控使用)
+```
+
+**5) `cmd_sync_test_connection`**
+```ts
+// Req: void
+// Resp: string // e.g. "Connection OK"
+```
+**行为/校验**
+- 配置不完整时返回 `SYNC_CONFIG_INCOMPLETE`。
+- 远端对象存储错误统一映射为稳定错误码（如 `SYNC_ERROR`）。
+
+**6) `cmd_sync_get_status`**
+```ts
+type SyncStatusDto = {
+  is_syncing: boolean;
+  pending_changes: number;
+  last_sync?: string;
+  last_error?: string;
+};
+```
+
+**7) `cmd_sync_full`**
+```ts
+// Req: void
+// Resp: string // e.g. "Sync completed"
+```
+**语义（实现约束）**
+- 互斥执行：与定时同步共享全局锁，防止并发同步。
+- 执行顺序：上传本地 Delta -> 拉取远端 Delta -> 校验并应用 -> 更新游标与最后同步时间。
+- 远端增量对象路径：`deltas/<device_id>/delta-<unix_nanos>-<uuid>.gz`。
+- 兼容旧对象键：`deltas/<device_id>/delta-<unix_timestamp>.gz`（读取阶段兼容解析）。
+- 每源设备游标：`last_remote_delta_ts::<source_device_id>`（存于 `sync_config`）。
+
+**8) `cmd_sync_create_snapshot` / `cmd_sync_restore_snapshot`**
+```ts
+// Req: void
+// Resp: string
+```
+**语义（实现约束）**
+- 快照对象路径：`snapshots/latest-<device_id>.gz`。
+- create: 导出全量 JSON，checksum 校验后上传。
+- restore: 下载快照后事务恢复（含 comments/tags/status history）。
+
+#### 13.9.6 前端 `invoke()` 包装建议
 前端建议封装统一调用器，做：
 - `AppError` 统一解析与 toast 展示
 - `zod` 预校验（避免无效请求打到 Rust）

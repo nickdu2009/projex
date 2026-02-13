@@ -14,6 +14,7 @@ flowchart LR
   M4 --> M5[M5 国际化]
   M5 --> M6[M6 富文本评论]
   M6 --> DONE[当前版本完成]
+  DONE --> M7[M7 同步增强 VNext]
 ```
 
 | 里程碑 | 目标 | 状态 |
@@ -21,9 +22,10 @@ flowchart LR
 | **M1** | 数据闭环：迁移 + 核心命令 + 最简验证 UI | ✅ 已完成 |
 | **M2** | 完整 UI：页面、筛选、规则校验、成员/Partner 视图 | ✅ 已完成 |
 | **M3** | 可交付：导出、打包、错误与空状态体验 | ✅ 已完成 |
-| **M4** | 同步与改进：S3 多设备同步 + 导入 + 标签筛选 + Zustand | ✅ 已完成 |
+| **M4** | 同步与改进：S3 多设备同步闭环 + 导入 + 标签筛选 + Zustand | ✅ 已完成（方案A收尾） |
 | **M5** | 国际化：i18n 框架 + 英文/中文翻译 + 语言切换 | ✅ 已完成 |
 | **M6** | 富文本评论：Tiptap 编辑器 + CRUD + 置顶 + 关联操作人 + S3 同步 | ✅ 已完成 |
+| **M7** | 同步增强（P1-P4）：安全/可靠性/可观测性/性能 | 🚧 规划中 |
 
 ---
 
@@ -150,23 +152,28 @@ flowchart LR
 
 ## M4：同步与改进 ✅ 已完成
 
-**目标**：支持 S3 多设备同步、数据导入、标签筛选 UI、Zustand 全局状态管理。
+**目标**：形成可用且稳定的同步闭环（上传/拉取/校验/应用/防回流），并完成导入、标签筛选、Zustand 管理。
 
 ### 详细需求内容
 
 #### 4.1 S3 多设备同步
 - [x] 迁移 `0003_add_sync_support.sql`：新增 `sync_metadata`、`vector_clocks`、`sync_config` 表及变更触发器
-- [x] `VectorClock`：因果一致性检测，LWW（Last Write Wins）冲突解决
-- [x] `DeltaSyncEngine`：基于触发器收集本地变更 → 生成压缩 Delta → 上传 S3；下载远端 Delta → 应用到本地
-- [x] `SnapshotManager`：全量快照创建/恢复/上传/下载，支持 checksum 校验与 gzip 压缩
+- [x] `cmd_sync_full` 完整链路：上传本地 Delta -> 下载远端 Delta -> 校验 -> 事务应用
+- [x] 远端 Delta 过滤策略：排除本机对象，按 `source_device_id + timestamp + key` 排序后应用
+- [x] 每设备消费游标：`last_remote_delta_ts::<source_device_id>`（存储于 `sync_config`）
+- [x] 防回流（anti-reupload）：`mark_remote_applied_operations_synced` 标记触发器回写行为为已同步
+- [x] 冲突策略：保留 `VectorClock` 冲突检测入口 + 最小 LWW 保护（`remote_version < local_version` 跳过）
+- [x] `DeltaSyncEngine`：支持 `project_tags` 复合键删除与 `project_comments` upsert/delete
+- [x] Bootstrap 行为：远端空桶时自动上传初始 snapshot，避免“同步成功但远端空数据”
+- [x] `SnapshotManager`：全量快照创建/恢复/上传/下载，支持 checksum 校验与 gzip 压缩，恢复链路覆盖 comments
 - [x] `S3SyncClient`：兼容 AWS S3 / Cloudflare R2 / MinIO，支持自定义 endpoint
-- [x] 前端 `SyncManager` 单例 + `SyncStatusBar` 组件（集成到 Layout footer）
-- [x] Settings 页面：S3 配置表单（bucket/endpoint/accessKey/secretKey）+ 同步/快照/恢复操作按钮
+- [x] 命令层补全：`sync_get/update/set_enabled/reveal_secret_key/test_connection/get_status/full/create_snapshot/restore_snapshot`
+- [x] 前端 `SyncManager` + `SyncStatusBar` + Settings 同步配置区块联动
 
 #### 4.2 数据导入
 - [x] 后端 `import_json_string`：解析 JSON，按 FK 依赖顺序写入（persons → partners → projects+tags → assignments → status_history）
 - [x] `INSERT OR IGNORE` 幂等导入，重复 ID 自动跳过
-- [x] Schema 版本校验（仅接受 version=1）
+- [x] Schema 版本兼容（version=1 与 version=2）
 - [x] 返回 `ImportResult`（各类型导入数量 + 跳过数量）
 - [x] 前端 Settings 页"导入数据"按钮，选择 .json 文件后调用后端导入
 - [x] 5 个 import 集成测试（空库导入、重复跳过、无效 JSON、错误版本、往返一致性）
@@ -189,16 +196,41 @@ flowchart LR
 - [x] 新增 `assignment_list_by_project` 命令
 - [x] `ConfirmModal` 统一确认弹窗组件
 - [x] 重命名 `export.rs` → `data_transfer.rs`（反映导入导出双向职责）
+- [x] 自动同步调度迁移到 Rust 后端 scheduler（前端不持有主定时器）
+- [x] `sync_lock + is_syncing` 并发控制，避免手动同步与定时同步并发执行
 
 #### 4.6 测试覆盖
-- [x] 230 个后端集成测试全部通过
-- [x] 12 个测试文件覆盖：assignment、delta、export/import、partner、person、project、snapshot、status_machine、sync_conflict、sync_engine、sync_triggers、vector_clock
+- [x] 后端全量测试通过（覆盖 sync/snapshot/conflict/trigger 等关键路径）
+- [x] 补充同步关键测试：
+  - `apply_delta_upsert_project_tags`
+  - `apply_delta_upsert_project_comments`
+  - `apply_delta_delete_project_tag_by_composite_record_id`
+  - `apply_delta_upsert_person_stale_version_is_ignored`
+  - `mark_remote_applied_operations_synced_marks_trigger_rows`
+  - `restore_snapshot_full_flow`
+  - `restore_snapshot_clears_all_tables`
 
 #### 4.7 验收
 - [x] 导出 → 导入往返数据一致
 - [x] 标签筛选可组合使用，与后端 SQL `IN` 查询联动
 - [x] 表单页下拉选项从 Zustand store 获取，避免重复 API 请求
-- [x] S3 同步配置可保存，同步/快照/恢复功能可触发
+- [x] S3 同步配置可保存，连接测试可执行，启停状态可持久化
+- [x] 远端 Delta 可落库且不会回流重传（防 ping-pong）
+- [x] `project_tags` / `project_comments` 可在多设备间同步
+- [x] snapshot restore 后 comments 数据完整可用
+
+#### 4.8 方案A收尾状态（2026-02）
+
+| 能力 | 状态 | 备注 |
+|------|------|------|
+| 本地 Delta 采集/上传 | ✅ | 已完成 |
+| 远端 Delta 下载/应用 | ✅ | 已完成 |
+| checksum 校验 | ✅ | 已完成 |
+| `project_tags` / `project_comments` Delta 支持 | ✅ | 已完成 |
+| 防回流（anti-reupload） | ✅ | 已完成 |
+| 最小 LWW 保护 | ✅ | 已完成 |
+| 端到端加密（E2E） | 🚧 | 规划中 |
+| 快照轮转清理 | 🚧 | 规划中 |
 
 ---
 
@@ -291,11 +323,44 @@ flowchart LR
 
 ---
 
+## M7：同步增强（VNext）🚧 规划中
+
+**目标**：在已完成同步闭环基础上，继续提升安全性、可靠性、可观测性与性能。
+
+### 详细需求内容
+
+#### 7.1 安全增强（P1）
+- [ ] 可选 E2E 加密（对象体加密 + 本地密钥管理）
+- [ ] 凭据治理增强（最小暴露面、轮换策略）
+- [ ] 同步相关错误码与安全告警分级
+
+#### 7.2 可靠性增强（P2）
+- [ ] 快照选择逻辑显式排序（避免依赖对象列表顺序）
+- [ ] Delta key 唯一性增强（避免同秒并发对象名冲突）
+- [ ] 更细粒度重试/退避策略（按上传/下载/应用分阶段）
+
+#### 7.3 可观测性增强（P3）
+- [ ] 增加同步指标：upload/download/apply 耗时、失败率、回流命中率
+- [ ] 增加结构化日志字段：`device_id`、`delta_key`、`cursor_ts`、`error_code`
+- [ ] 前端状态栏增加“最近失败阶段”可视化
+
+#### 7.4 性能优化（P4）
+- [ ] 大桶下增量扫描优化（分页 list / 前缀分片）
+- [ ] 大 Delta 应用优化（分批事务或批处理窗口）
+- [ ] 快照压缩参数与对象大小治理
+
+#### 7.5 验收
+- [ ] 同步失败可快速定位到阶段（配置/网络/校验/应用）
+- [ ] 在多设备高频变更场景下，数据仍最终一致且无明显回流风暴
+- [ ] 在历史对象增长后，单次同步耗时保持可接受
+
+---
+
 ## 依赖关系
 
 ```mermaid
 flowchart LR
-  M1 --> M2 --> M3 --> M4 --> M5 --> M6
+  M1 --> M2 --> M3 --> M4 --> M5 --> M6 --> M7
 ```
 
 - **M2 依赖 M1**：M1 已有命令与 DB，M2 在此基础上补全命令并做完整 UI
@@ -303,3 +368,4 @@ flowchart LR
 - **M4 依赖 M3**：核心 MVP 稳定后扩展同步与改进
 - **M5 依赖 M4**：稳定功能后做前端国际化
 - **M6 依赖 M5**：国际化完成后添加富文本评论功能
+- **M7 依赖 M6**：在既有同步闭环上做安全、可靠性与性能增强

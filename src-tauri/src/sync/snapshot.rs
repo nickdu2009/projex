@@ -129,6 +129,8 @@ impl<'a> SnapshotManager<'a> {
             .map_err(|e: rusqlite::Error| AppError::Db(e.to_string()))?;
 
         // Clear existing data
+        tx.execute("DELETE FROM project_comments", [])
+            .map_err(|e: rusqlite::Error| AppError::Db(e.to_string()))?;
         tx.execute("DELETE FROM status_history", [])
             .map_err(|e: rusqlite::Error| AppError::Db(e.to_string()))?;
         tx.execute("DELETE FROM assignments", [])
@@ -174,6 +176,13 @@ impl<'a> SnapshotManager<'a> {
         if let Some(history) = export_data["statusHistory"].as_array() {
             for entry in history {
                 self.restore_status_history(&tx, entry)?;
+            }
+        }
+
+        // Restore comments (schema version 2)
+        if let Some(comments) = export_data["comments"].as_array() {
+            for comment in comments {
+                self.restore_comment(&tx, comment)?;
             }
         }
 
@@ -324,6 +333,35 @@ impl<'a> SnapshotManager<'a> {
                 data["changedByPersonId"].as_str(),
                 data["note"].as_str(),
                 data["version"].as_i64().unwrap_or(1),
+            ],
+        )
+        .map_err(|e| AppError::Db(e.to_string()))?;
+
+        Ok(())
+    }
+
+    fn restore_comment(
+        &self,
+        tx: &rusqlite::Transaction,
+        data: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        tx.execute(
+            "INSERT INTO project_comments (
+                id, project_id, person_id, content, is_pinned, created_at, updated_at, _version
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                data["id"].as_str(),
+                data["projectId"].as_str(),
+                data["personId"].as_str(),
+                data["content"].as_str(),
+                if data["isPinned"].as_bool().unwrap_or(false) {
+                    1
+                } else {
+                    0
+                },
+                data["createdAt"].as_str(),
+                data["updatedAt"].as_str(),
+                1i64,
             ],
         )
         .map_err(|e| AppError::Db(e.to_string()))?;

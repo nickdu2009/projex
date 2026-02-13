@@ -134,6 +134,51 @@ fn apply_delta_upsert_person_update() {
     assert_eq!(email, "alice-new@t.com");
 }
 
+#[test]
+fn apply_delta_upsert_person_stale_version_is_ignored() {
+    let (pool, device_id) = setup();
+    seed_person_and_partner(&pool);
+    {
+        let conn = pool.0.lock().unwrap();
+        conn.execute(
+            "UPDATE persons SET _version = 5, display_name = 'Alice Local Newer' WHERE id = 'person-1'",
+            [],
+        )
+        .unwrap();
+    }
+
+    let engine = DeltaSyncEngine::new(&pool, device_id);
+    let delta = make_delta(vec![Operation {
+        table_name: "persons".into(),
+        record_id: "person-1".into(),
+        op_type: OperationType::Update,
+        data: Some(json!({
+            "id": "person-1",
+            "display_name": "Alice Remote Older",
+            "email": "old@remote.com",
+            "role": "lead",
+            "note": "should be ignored",
+            "is_active": 1,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+        })),
+        version: 4,
+    }]);
+
+    engine.apply_delta(&delta).unwrap();
+
+    let conn = pool.0.lock().unwrap();
+    let (name, version): (String, i64) = conn
+        .query_row(
+            "SELECT display_name, _version FROM persons WHERE id = 'person-1'",
+            [],
+            |r: &rusqlite::Row<'_>| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(name, "Alice Local Newer");
+    assert_eq!(version, 5);
+}
+
 // ══════════════════════════════════════════════════════════
 //  upsert_partner
 // ══════════════════════════════════════════════════════════
@@ -298,6 +343,74 @@ fn apply_delta_upsert_status_history() {
     assert_eq!(count_table(&pool, "status_history"), 1);
 }
 
+#[test]
+fn apply_delta_upsert_project_tags() {
+    let (pool, device_id) = setup();
+    seed_person_and_partner(&pool);
+
+    {
+        let conn = pool.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO projects (id, name, description, priority, current_status, country_code, partner_id, owner_person_id, created_at, updated_at, _version)
+             VALUES ('proj-tag', 'TagProj', '', 3, 'BACKLOG', 'US', 'partner-1', 'person-1', datetime('now'), datetime('now'), 1)",
+            [],
+        )
+        .unwrap();
+    }
+
+    let engine = DeltaSyncEngine::new(&pool, device_id);
+    let delta = make_delta(vec![Operation {
+        table_name: "project_tags".into(),
+        record_id: "proj-tag:urgent".into(),
+        op_type: OperationType::Insert,
+        data: Some(json!({
+            "project_id": "proj-tag",
+            "tag": "urgent",
+            "created_at": "2026-01-01T00:00:00Z"
+        })),
+        version: 1,
+    }]);
+
+    engine.apply_delta(&delta).unwrap();
+    assert_eq!(count_table(&pool, "project_tags"), 1);
+}
+
+#[test]
+fn apply_delta_upsert_project_comments() {
+    let (pool, device_id) = setup();
+    seed_person_and_partner(&pool);
+
+    {
+        let conn = pool.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO projects (id, name, description, priority, current_status, country_code, partner_id, owner_person_id, created_at, updated_at, _version)
+             VALUES ('proj-comment', 'CommentProj', '', 3, 'BACKLOG', 'US', 'partner-1', 'person-1', datetime('now'), datetime('now'), 1)",
+            [],
+        )
+        .unwrap();
+    }
+
+    let engine = DeltaSyncEngine::new(&pool, device_id);
+    let delta = make_delta(vec![Operation {
+        table_name: "project_comments".into(),
+        record_id: "comment-1".into(),
+        op_type: OperationType::Insert,
+        data: Some(json!({
+            "id": "comment-1",
+            "project_id": "proj-comment",
+            "person_id": "person-1",
+            "content": "{\"type\":\"doc\",\"content\":[]}",
+            "is_pinned": 1,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+        })),
+        version: 1,
+    }]);
+
+    engine.apply_delta(&delta).unwrap();
+    assert_eq!(count_table(&pool, "project_comments"), 1);
+}
+
 // ══════════════════════════════════════════════════════════
 //  delete operations for all tables
 // ══════════════════════════════════════════════════════════
@@ -336,6 +449,38 @@ fn apply_delta_delete_nonexistent_is_ok() {
 
     // Should not error even if the record doesn't exist
     engine.apply_delta(&delta).unwrap();
+}
+
+#[test]
+fn apply_delta_delete_project_tag_by_composite_record_id() {
+    let (pool, device_id) = setup();
+    seed_person_and_partner(&pool);
+    {
+        let conn = pool.0.lock().unwrap();
+        conn.execute(
+            "INSERT INTO projects (id, name, description, priority, current_status, country_code, partner_id, owner_person_id, created_at, updated_at, _version)
+             VALUES ('proj-del-tag', 'TagDelProj', '', 3, 'BACKLOG', 'US', 'partner-1', 'person-1', datetime('now'), datetime('now'), 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO project_tags (project_id, tag, created_at) VALUES ('proj-del-tag', 'urgent', datetime('now'))",
+            [],
+        )
+        .unwrap();
+    }
+
+    let engine = DeltaSyncEngine::new(&pool, device_id);
+    let delta = make_delta(vec![Operation {
+        table_name: "project_tags".into(),
+        record_id: "proj-del-tag:urgent".into(),
+        op_type: OperationType::Delete,
+        data: None,
+        version: 1,
+    }]);
+
+    engine.apply_delta(&delta).unwrap();
+    assert_eq!(count_table(&pool, "project_tags"), 0);
 }
 
 // ══════════════════════════════════════════════════════════

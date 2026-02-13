@@ -195,7 +195,14 @@ impl<'a> DeltaSyncEngine<'a> {
             match op.op_type {
                 OperationType::Insert | OperationType::Update => {
                     if let Some(data) = &op.data {
-                        self.apply_upsert(&tx, &op.table_name, &op.record_id, data, op.version)?;
+                        self.apply_upsert(
+                            &tx,
+                            &op.table_name,
+                            &op.record_id,
+                            data,
+                            op.version,
+                            &delta.vector_clock,
+                        )?;
                     }
                 }
                 OperationType::Delete => {
@@ -221,15 +228,22 @@ impl<'a> DeltaSyncEngine<'a> {
         record_id: &str,
         data: &serde_json::Value,
         version: i64,
+        remote_vc: &VectorClock,
     ) -> Result<(), AppError> {
         // Check for conflicts using vector clock
         let local_vc = self.get_record_vector_clock(tx, table, record_id)?;
-        let remote_vc = VectorClock::empty(); // TODO: get from delta
 
-        if local_vc.conflicts_with(&remote_vc) {
+        if local_vc.conflicts_with(remote_vc) {
             // Conflict! Use LWW resolution
             log::warn!("Conflict detected for {}:{}, using LWW", table, record_id);
             // For now, remote wins (can be improved with timestamp comparison)
+        }
+
+        // LWW minimal guard: avoid stale remote upsert overriding newer local row.
+        // 复杂说明：当前版本号是每行增量计数，跨设备不是全局时钟。
+        // 这里先做保守保护：仅拦截 remote_version < local_version。
+        if !self.should_apply_upsert_lww(tx, table, record_id, version)? {
+            return Ok(());
         }
 
         // Build SQL dynamically based on table
@@ -239,6 +253,8 @@ impl<'a> DeltaSyncEngine<'a> {
             "partners" => self.upsert_partner(tx, data, version)?,
             "assignments" => self.upsert_assignment(tx, data, version)?,
             "status_history" => self.upsert_status_history(tx, data, version)?,
+            "project_tags" => self.upsert_project_tag(tx, data)?,
+            "project_comments" => self.upsert_project_comment(tx, data, version)?,
             _ => {
                 log::warn!("Unknown table for upsert: {}", table);
             }
@@ -387,6 +403,109 @@ impl<'a> DeltaSyncEngine<'a> {
         Ok(())
     }
 
+    fn upsert_project_tag(
+        &self,
+        tx: &rusqlite::Transaction,
+        data: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        tx.execute(
+            "INSERT OR REPLACE INTO project_tags (project_id, tag, created_at) VALUES (?1, ?2, ?3)",
+            params![
+                data["project_id"].as_str(),
+                data["tag"].as_str(),
+                data["created_at"].as_str(),
+            ],
+        )
+        .map_err(|e| AppError::Db(e.to_string()))?;
+
+        Ok(())
+    }
+
+    fn upsert_project_comment(
+        &self,
+        tx: &rusqlite::Transaction,
+        data: &serde_json::Value,
+        version: i64,
+    ) -> Result<(), AppError> {
+        let person_id = data.get("person_id").and_then(|v| v.as_str());
+        let is_pinned = if data["is_pinned"].is_boolean() {
+            if data["is_pinned"].as_bool().unwrap_or(false) {
+                1
+            } else {
+                0
+            }
+        } else {
+            data["is_pinned"].as_i64().unwrap_or(0)
+        };
+
+        tx.execute(
+            "INSERT OR REPLACE INTO project_comments (
+                id, project_id, person_id, content, is_pinned, created_at, updated_at, _version
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                data["id"].as_str(),
+                data["project_id"].as_str(),
+                person_id,
+                data["content"].as_str(),
+                is_pinned,
+                data["created_at"].as_str(),
+                data["updated_at"].as_str(),
+                version,
+            ],
+        )
+        .map_err(|e| AppError::Db(e.to_string()))?;
+
+        Ok(())
+    }
+
+    fn should_apply_upsert_lww(
+        &self,
+        tx: &rusqlite::Transaction,
+        table: &str,
+        record_id: &str,
+        remote_version: i64,
+    ) -> Result<bool, AppError> {
+        // project_tags has no _version column and uses composite key.
+        if table == "project_tags" {
+            return Ok(true);
+        }
+
+        let supports_version = matches!(
+            table,
+            "projects"
+                | "persons"
+                | "partners"
+                | "assignments"
+                | "status_history"
+                | "project_comments"
+        );
+        if !supports_version {
+            return Ok(true);
+        }
+
+        let sql = format!("SELECT _version FROM {} WHERE id = ?1", table);
+        match tx.query_row(&sql, params![record_id], |row: &rusqlite::Row<'_>| {
+            row.get(0)
+        }) {
+            Ok(local_version) => {
+                if remote_version < local_version {
+                    log::info!(
+                        "Skip stale remote upsert for {}:{} (remote_version={}, local_version={})",
+                        table,
+                        record_id,
+                        remote_version,
+                        local_version
+                    );
+                    Ok(false)
+                } else {
+                    Ok(true)
+                }
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(true),
+            Err(e) => Err(AppError::Db(e.to_string())),
+        }
+    }
+
     /// Apply delete operation
     fn apply_delete(
         &self,
@@ -394,9 +513,21 @@ impl<'a> DeltaSyncEngine<'a> {
         table: &str,
         record_id: &str,
     ) -> Result<(), AppError> {
-        let sql = format!("DELETE FROM {} WHERE id = ?1", table);
-        tx.execute(&sql, params![record_id])
-            .map_err(|e| AppError::Db(e.to_string()))?;
+        match table {
+            "project_tags" => {
+                let (project_id, tag) = parse_project_tag_record_id(record_id)?;
+                tx.execute(
+                    "DELETE FROM project_tags WHERE project_id = ?1 AND tag = ?2",
+                    params![project_id, tag],
+                )
+                .map_err(|e| AppError::Db(e.to_string()))?;
+            }
+            _ => {
+                let sql = format!("DELETE FROM {} WHERE id = ?1", table);
+                tx.execute(&sql, params![record_id])
+                    .map_err(|e| AppError::Db(e.to_string()))?;
+            }
+        }
 
         Ok(())
     }
@@ -456,5 +587,86 @@ impl<'a> DeltaSyncEngine<'a> {
         .map_err(|e: rusqlite::Error| AppError::Db(e.to_string()))?;
 
         Ok(())
+    }
+
+    /// Get current max sync_metadata id.
+    pub fn current_max_sync_metadata_id(&self) -> Result<i64, AppError> {
+        let conn = self
+            .pool
+            .0
+            .lock()
+            .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+
+        conn.query_row(
+            "SELECT COALESCE(MAX(id), 0) FROM sync_metadata",
+            [],
+            |row: &rusqlite::Row<'_>| row.get(0),
+        )
+        .map_err(|e: rusqlite::Error| AppError::Db(e.to_string()))
+    }
+
+    /// Mark trigger-generated metadata (from applying remote delta) as synced.
+    /// This avoids uploading the same remote changes back to S3.
+    pub fn mark_remote_applied_operations_synced(
+        &self,
+        min_exclusive_id: i64,
+        operations: &[Operation],
+    ) -> Result<usize, AppError> {
+        let mut conn = self
+            .pool
+            .0
+            .lock()
+            .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+
+        let tx = conn
+            .transaction()
+            .map_err(|e: rusqlite::Error| AppError::Db(e.to_string()))?;
+
+        let mut updated = 0usize;
+        for op in operations {
+            let op_name = operation_type_to_sql_name(&op.op_type);
+            let changed = tx
+                .execute(
+                    "UPDATE sync_metadata
+                     SET synced = 1
+                     WHERE id > ?1
+                       AND synced = 0
+                       AND table_name = ?2
+                       AND record_id = ?3
+                       AND operation = ?4
+                       AND version = ?5",
+                    params![
+                        min_exclusive_id,
+                        &op.table_name,
+                        &op.record_id,
+                        op_name,
+                        op.version
+                    ],
+                )
+                .map_err(|e: rusqlite::Error| AppError::Db(e.to_string()))?;
+            updated += changed;
+        }
+
+        tx.commit()
+            .map_err(|e: rusqlite::Error| AppError::Db(e.to_string()))?;
+
+        Ok(updated)
+    }
+}
+
+fn parse_project_tag_record_id(record_id: &str) -> Result<(&str, &str), AppError> {
+    record_id.split_once(':').ok_or_else(|| {
+        AppError::Validation(format!(
+            "Invalid project_tags record_id format: {}",
+            record_id
+        ))
+    })
+}
+
+fn operation_type_to_sql_name(op_type: &OperationType) -> &'static str {
+    match op_type {
+        OperationType::Insert => "INSERT",
+        OperationType::Update => "UPDATE",
+        OperationType::Delete => "DELETE",
     }
 }

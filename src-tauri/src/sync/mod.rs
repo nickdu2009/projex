@@ -6,6 +6,6 @@ pub mod snapshot;
 pub mod vector_clock;
 
 pub use delta_sync::{Delta, DeltaSyncEngine, Operation, OperationType};
-pub use s3_client::S3SyncClient;
+pub use s3_client::{S3ObjectSummary, S3SyncClient};
 pub use snapshot::SnapshotManager;
 pub use vector_clock::VectorClock;

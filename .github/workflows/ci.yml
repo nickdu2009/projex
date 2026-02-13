@@ -9,6 +9,28 @@ on:
       - main
 
 jobs:
+  # Detect path changes for conditional jobs
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      sync_minio: ${{ steps.filter.outputs.sync_minio }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect sync/minio related changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            sync_minio:
+              - '.github/workflows/ci.yml'
+              - 'docker-compose.minio.yml'
+              - 'src-tauri/src/commands/sync.rs'
+              - 'src-tauri/src/sync/**'
+              - 'src-tauri/tests/test_s3_minio.rs'
+              - 'src-tauri/tests/test_sync_e2e_minio.rs'
+
   # Frontend lint & type check
   frontend:
     runs-on: ubuntu-latest
@@ -64,3 +86,59 @@ jobs:
       - name: Clippy lint
         working-directory: src-tauri
         run: cargo clippy -- -D warnings
+
+  # Sync integration/E2E tests against local MinIO
+  sync-minio-e2e:
+    needs: changes
+    if: needs.changes.outputs.sync_minio == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Start MinIO
+        run: docker compose --env-file .env.minio.example -f docker-compose.minio.yml up -d
+
+      - name: Wait for MinIO init
+        run: |
+          for i in $(seq 1 30); do
+            status="$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' projex-minio-init 2>/dev/null || true)"
+            if [ "$status" = "exited 0" ]; then
+              echo "MinIO init completed."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "MinIO init did not finish in time."
+          docker ps -a
+          docker logs projex-minio || true
+          docker logs projex-minio-init || true
+          exit 1
+
+      - name: Run sync MinIO tests
+        run: |
+          set -a
+          source .env.minio.example
+          set +a
+          export SYNC_MINIO_TEST=1
+          cd src-tauri
+          cargo test --test test_s3_minio -- --nocapture
+          cargo test --test test_sync_e2e_minio -- --nocapture
+
+      - name: Stop MinIO
+        if: always()
+        run: docker compose --env-file .env.minio.example -f docker-compose.minio.yml down -v

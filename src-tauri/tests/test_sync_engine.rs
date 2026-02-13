@@ -226,3 +226,59 @@ fn apply_remote_delta_deletes_person() {
         .unwrap();
     assert_eq!(count, 0);
 }
+
+#[test]
+fn mark_remote_applied_operations_synced_marks_trigger_rows() {
+    let (pool, device_id) = setup();
+    let engine = DeltaSyncEngine::new(&pool, device_id.clone());
+
+    {
+        let conn = pool.0.lock().unwrap();
+        conn.execute(
+            "UPDATE sync_config SET value = '1' WHERE key = 'sync_enabled'",
+            [],
+        )
+        .unwrap();
+    }
+
+    let before = engine.current_max_sync_metadata_id().unwrap();
+    let delta = app_lib::sync::Delta {
+        id: 3,
+        operations: vec![app_lib::sync::Operation {
+            table_name: "persons".into(),
+            record_id: "remote-sync-marker".into(),
+            op_type: app_lib::sync::OperationType::Insert,
+            data: Some(serde_json::json!({
+                "id": "remote-sync-marker",
+                "display_name": "Remote Marker",
+                "email": "",
+                "role": "",
+                "note": "",
+                "is_active": 1,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z"
+            })),
+            version: 1,
+        }],
+        device_id: "remote-device".into(),
+        vector_clock: app_lib::sync::VectorClock::new("remote-device".into()),
+        created_at: "2026-01-01T00:00:00Z".into(),
+        checksum: "ignored".into(),
+    };
+
+    engine.apply_delta(&delta).unwrap();
+    let marked = engine
+        .mark_remote_applied_operations_synced(before, &delta.operations)
+        .unwrap();
+    assert!(marked >= 1);
+
+    let conn = pool.0.lock().unwrap();
+    let synced_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sync_metadata WHERE table_name = 'persons' AND record_id = 'remote-sync-marker' AND synced = 1",
+            [],
+            |row: &rusqlite::Row<'_>| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(synced_count, 1);
+}

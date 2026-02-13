@@ -214,6 +214,12 @@ fn seed_full_data(pool: &app_lib::infra::DbPool) {
          VALUES ('sh1', 'proj1', NULL, 'BACKLOG', '2026-01-01T00:00:00Z', 'p1', 'created', 1)",
         [],
     ).unwrap();
+    conn.execute(
+        "INSERT INTO project_comments (id, project_id, person_id, content, is_pinned, created_at, updated_at, _version)
+         VALUES ('c1', 'proj1', 'p1', '{\"type\":\"doc\",\"content\":[]}', 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1)",
+        [],
+    )
+    .unwrap();
 }
 
 #[test]
@@ -245,6 +251,7 @@ fn restore_snapshot_full_flow() {
     assert_eq!(count_table(&pool, "projects"), 1);
     assert_eq!(count_table(&pool, "assignments"), 1);
     assert_eq!(count_table(&pool, "status_history"), 1);
+    assert_eq!(count_table(&pool, "project_comments"), 1);
 
     // Verify content
     let conn = pool.0.lock().unwrap();
@@ -286,6 +293,7 @@ fn restore_snapshot_clears_all_tables() {
     assert_eq!(count_table(&pool, "projects"), 0);
     assert_eq!(count_table(&pool, "assignments"), 0);
     assert_eq!(count_table(&pool, "status_history"), 0);
+    assert_eq!(count_table(&pool, "project_comments"), 0);
 }
 
 #[test]

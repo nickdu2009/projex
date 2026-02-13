@@ -4,8 +4,11 @@ pub mod domain;
 pub mod error;
 pub mod infra;
 pub mod sync;
+pub use crate::commands::sync::{
+    sync_create_snapshot_for_pool, sync_full_for_pool, sync_full_with_runtime_for_pool,
+    sync_hold_lock_for_test, sync_restore_snapshot_for_pool, SyncRuntime,
+};
 
-use crate::commands::sync::SyncRuntime;
 use infra::init_db;
 use std::path::PathBuf;
 use tauri::Manager;

@@ -42,3 +42,7 @@ Thumbs.db
 *.temp
 *~
 .tmp_video_frames/
+
+# Local MinIO dev data / env
+.env.minio
+.local/minio/

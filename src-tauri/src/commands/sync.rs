@@ -2,7 +2,7 @@
 
 use crate::error::AppError;
 use crate::infra::DbPool;
-use crate::sync::{DeltaSyncEngine, S3SyncClient, SnapshotManager};
+use crate::sync::{Delta, DeltaSyncEngine, S3ObjectSummary, S3SyncClient, SnapshotManager};
 use aws_sdk_s3::error::ProvideErrorMetadata;
 use aws_sdk_s3::error::SdkError;
 use rusqlite::Connection;
@@ -14,6 +14,7 @@ use tauri::State;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct SyncRuntime {
@@ -96,21 +97,21 @@ impl SyncRuntime {
                     break;
                 }
 
-                // Prevent concurrent scheduled/manual sync.
-                let _lock = runtime.inner.sync_lock.lock().await;
-                runtime.inner.is_syncing.store(true, Ordering::Relaxed);
-
-                let res = sync_full_impl(&pool).await;
+                let res = sync_full_with_runtime_for_pool(&pool, &runtime).await;
                 if let Err(e) = res {
                     log::error!("Scheduled sync failed: {}", e);
                 }
-
-                runtime.inner.is_syncing.store(false, Ordering::Relaxed);
 
                 let secs = (minutes.max(1) as u64) * 60;
                 sleep(Duration::from_secs(secs)).await;
             }
         }));
+    }
+}
+
+impl Default for SyncRuntime {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -387,11 +388,35 @@ pub async fn cmd_sync_full(
     pool: State<'_, DbPool>,
     runtime: State<'_, SyncRuntime>,
 ) -> Result<String, AppError> {
+    sync_full_with_runtime_for_pool(pool.inner(), runtime.inner()).await
+}
+
+/// Execute full sync pipeline with runtime lock protection.
+/// This ensures scheduled/manual sync calls never run concurrently.
+pub async fn sync_full_with_runtime_for_pool(
+    pool_ref: &DbPool,
+    runtime: &SyncRuntime,
+) -> Result<String, AppError> {
     let _lock = runtime.inner.sync_lock.lock().await;
     runtime.inner.is_syncing.store(true, Ordering::Relaxed);
-    let res = sync_full_impl(pool.inner()).await;
+    let res = sync_full_impl(pool_ref).await;
     runtime.inner.is_syncing.store(false, Ordering::Relaxed);
     res
+}
+
+/// Execute full sync pipeline for a database pool.
+/// This entry is used by command runtime and integration tests.
+pub async fn sync_full_for_pool(pool_ref: &DbPool) -> Result<String, AppError> {
+    sync_full_impl(pool_ref).await
+}
+
+/// Test helper: hold the runtime sync lock for a fixed duration.
+/// Used to verify scheduler/manual contention behavior in integration tests.
+pub async fn sync_hold_lock_for_test(runtime: &SyncRuntime, hold_for: Duration) {
+    let _lock = runtime.inner.sync_lock.lock().await;
+    runtime.inner.is_syncing.store(true, Ordering::Relaxed);
+    sleep(hold_for).await;
+    runtime.inner.is_syncing.store(false, Ordering::Relaxed);
 }
 
 async fn sync_full_impl(pool_ref: &DbPool) -> Result<String, AppError> {
@@ -442,9 +467,12 @@ async fn sync_full_impl(pool_ref: &DbPool) -> Result<String, AppError> {
 
             let delta_data = local_collected.delta.compress()?;
             let delta_key = format!(
-                "deltas/{}/delta-{}.gz",
+                "deltas/{}/delta-{}-{}.gz",
                 device_id,
-                chrono::Utc::now().timestamp()
+                chrono::Utc::now()
+                    .timestamp_nanos_opt()
+                    .unwrap_or_else(|| chrono::Utc::now().timestamp_micros() * 1_000),
+                Uuid::new_v4()
             );
 
             s3_client
@@ -506,16 +534,99 @@ async fn sync_full_impl(pool_ref: &DbPool) -> Result<String, AppError> {
             }
         }
 
-        // Step 2: Download remote deltas
-        let remote_deltas = s3_client.list("deltas/").await.map_err(|e| {
+        // Step 2: Download and apply remote deltas
+        let remote_delta_keys = s3_client.list("deltas/").await.map_err(|e| {
             log::error!("S3 list error: {:?}", e);
             map_s3_error("list", e)
         })?;
 
-        log::info!("Found {} remote delta files", remote_deltas.len());
+        let mut remote_delta_candidates = Vec::new();
+        {
+            let conn = pool_ref
+                .0
+                .lock()
+                .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
 
-        // TODO: Download and apply remote deltas
-        // For now, just log them
+            for key in remote_delta_keys {
+                match parse_remote_delta_object(&key) {
+                    Some(remote_delta) => {
+                        if remote_delta.source_device_id == device_id {
+                            continue;
+                        }
+
+                        let cursor_ts = get_remote_delta_cursor_timestamp(
+                            &conn,
+                            &remote_delta.source_device_id,
+                        )?
+                        .unwrap_or(0);
+                        if remote_delta.timestamp > cursor_ts {
+                            remote_delta_candidates.push(remote_delta);
+                        }
+                    }
+                    None => {
+                        log::warn!("Skip unsupported delta key format: {}", key);
+                    }
+                }
+            }
+        }
+
+        remote_delta_candidates.sort_by(|a, b| {
+            a.source_device_id
+                .cmp(&b.source_device_id)
+                .then(a.timestamp.cmp(&b.timestamp))
+                .then(a.key.cmp(&b.key))
+        });
+
+        log::info!(
+            "Remote delta files pending apply: {}",
+            remote_delta_candidates.len()
+        );
+
+        let mut applied_remote_delta_count = 0usize;
+        for remote in remote_delta_candidates {
+            let delta_data = s3_client.download(&remote.key).await.map_err(|e| {
+                log::error!("S3 download error for {}: {:?}", remote.key, e);
+                map_s3_error("download", e)
+            })?;
+
+            let delta = Delta::decompress(&delta_data)?;
+            let calculated_checksum = Delta::calculate_checksum(&delta.operations);
+            if calculated_checksum != delta.checksum {
+                return Err(AppError::Sync(format!(
+                    "Checksum mismatch for remote delta {}",
+                    remote.key
+                )));
+            }
+
+            let before_apply_sync_meta_id = delta_engine.current_max_sync_metadata_id()?;
+            delta_engine.apply_delta(&delta)?;
+            let marked = delta_engine.mark_remote_applied_operations_synced(
+                before_apply_sync_meta_id,
+                &delta.operations,
+            )?;
+
+            {
+                let conn = pool_ref
+                    .0
+                    .lock()
+                    .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+                set_remote_delta_cursor_timestamp(
+                    &conn,
+                    &remote.source_device_id,
+                    remote.timestamp,
+                )?;
+            }
+
+            applied_remote_delta_count += 1;
+            log::info!(
+                "Applied remote delta {} from {}, marked {} local metadata rows as synced",
+                remote.key,
+                remote.source_device_id,
+                marked
+            );
+        }
+
+        log::info!("Applied {} remote delta files", applied_remote_delta_count);
 
         // Step 3: Update last sync time
         {
@@ -548,10 +659,19 @@ async fn sync_full_impl(pool_ref: &DbPool) -> Result<String, AppError> {
 /// Create and upload snapshot
 #[tauri::command]
 pub async fn cmd_sync_create_snapshot(pool: State<'_, DbPool>) -> Result<String, AppError> {
+    sync_create_snapshot_for_pool(pool.inner()).await
+}
+
+/// Execute snapshot creation/upload pipeline for a database pool.
+/// This entry is used by command runtime and integration tests.
+pub async fn sync_create_snapshot_for_pool(pool_ref: &DbPool) -> Result<String, AppError> {
+    sync_create_snapshot_impl(pool_ref).await
+}
+
+async fn sync_create_snapshot_impl(pool_ref: &DbPool) -> Result<String, AppError> {
     log::info!("Creating snapshot...");
 
     // Get config
-    let pool_ref = pool.inner();
     let (device_id, bucket, endpoint, access_key, secret_key) = {
         let conn = pool_ref
             .0
@@ -606,10 +726,19 @@ pub async fn cmd_sync_create_snapshot(pool: State<'_, DbPool>) -> Result<String,
 /// Download and restore from latest snapshot
 #[tauri::command]
 pub async fn cmd_sync_restore_snapshot(pool: State<'_, DbPool>) -> Result<String, AppError> {
+    sync_restore_snapshot_for_pool(pool.inner()).await
+}
+
+/// Execute snapshot restore pipeline for a database pool.
+/// This entry is used by command runtime and integration tests.
+pub async fn sync_restore_snapshot_for_pool(pool_ref: &DbPool) -> Result<String, AppError> {
+    sync_restore_snapshot_impl(pool_ref).await
+}
+
+async fn sync_restore_snapshot_impl(pool_ref: &DbPool) -> Result<String, AppError> {
     log::info!("Restoring from snapshot...");
 
     // Get config
-    let pool_ref = pool.inner();
     let (device_id, bucket, endpoint, access_key, secret_key) = {
         let conn = pool_ref
             .0
@@ -640,19 +769,27 @@ pub async fn cmd_sync_restore_snapshot(pool: State<'_, DbPool>) -> Result<String
             .map_err(|e| AppError::Db(format!("S3 client error: {}", e)))?
     };
 
-    // List snapshots
-    let snapshots = s3_client.list("snapshots/").await.map_err(|e| {
-        log::error!("S3 list error: {:?}", e);
-        map_s3_error("list", e)
-    })?;
+    // List snapshots with metadata and choose latest explicitly.
+    let snapshots = s3_client
+        .list_with_metadata("snapshots/")
+        .await
+        .map_err(|e| {
+            log::error!("S3 list error: {:?}", e);
+            map_s3_error("list", e)
+        })?;
 
     if snapshots.is_empty() {
         return Err(AppError::Db("No snapshots found".to_string()));
     }
 
-    // Use latest
-    let latest_key = snapshots.last().unwrap();
-    log::info!("Downloading snapshot: {}", latest_key);
+    let latest = select_latest_snapshot(&snapshots)
+        .ok_or_else(|| AppError::Db("No valid snapshots found".to_string()))?;
+    let latest_key = latest.key.as_str();
+    log::info!(
+        "Downloading latest snapshot: {} (last_modified_unix={:?})",
+        latest_key,
+        latest.last_modified_unix
+    );
 
     let snapshot_data = s3_client.download(latest_key).await.map_err(|e| {
         log::error!("S3 download error: {:?}", e);
@@ -691,6 +828,13 @@ pub fn cmd_sync_reveal_secret_key(pool: State<DbPool>) -> Result<String, AppErro
 
 // Helper functions
 
+#[derive(Debug, Clone)]
+struct RemoteDeltaObject {
+    key: String,
+    source_device_id: String,
+    timestamp: i64,
+}
+
 fn get_config_value(conn: &Connection, key: &str) -> Result<String, AppError> {
     conn.query_row(
         "SELECT value FROM sync_config WHERE key = ?1",
@@ -708,6 +852,66 @@ fn set_config_value(conn: &Connection, key: &str, value: &str) -> Result<(), App
     .map_err(|e: rusqlite::Error| AppError::Db(e.to_string()))?;
 
     Ok(())
+}
+
+fn get_optional_config_value(conn: &Connection, key: &str) -> Result<Option<String>, AppError> {
+    match conn.query_row(
+        "SELECT value FROM sync_config WHERE key = ?1",
+        [key],
+        |row: &rusqlite::Row<'_>| row.get(0),
+    ) {
+        Ok(value) => Ok(Some(value)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(AppError::Db(e.to_string())),
+    }
+}
+
+fn parse_remote_delta_object(key: &str) -> Option<RemoteDeltaObject> {
+    let rest = key.strip_prefix("deltas/")?;
+    let (source_device_id, file_name) = rest.split_once('/')?;
+    let core = file_name.strip_prefix("delta-")?.strip_suffix(".gz")?;
+    // Backward compatible:
+    // - old: delta-<unix_ts>.gz
+    // - new: delta-<unix_ts>-<uuid>.gz
+    let ts_str = core.split('-').next()?;
+    let timestamp = ts_str.parse::<i64>().ok()?;
+
+    Some(RemoteDeltaObject {
+        key: key.to_string(),
+        source_device_id: source_device_id.to_string(),
+        timestamp,
+    })
+}
+
+fn select_latest_snapshot(snapshots: &[S3ObjectSummary]) -> Option<&S3ObjectSummary> {
+    snapshots.iter().max_by(|a, b| {
+        a.last_modified_unix
+            .unwrap_or(i64::MIN)
+            .cmp(&b.last_modified_unix.unwrap_or(i64::MIN))
+            .then(a.key.cmp(&b.key))
+    })
+}
+
+fn remote_delta_cursor_key(source_device_id: &str) -> String {
+    format!("last_remote_delta_ts::{}", source_device_id)
+}
+
+fn get_remote_delta_cursor_timestamp(
+    conn: &Connection,
+    source_device_id: &str,
+) -> Result<Option<i64>, AppError> {
+    let key = remote_delta_cursor_key(source_device_id);
+    let value = get_optional_config_value(conn, &key)?;
+    Ok(value.and_then(|v| v.trim().parse::<i64>().ok()))
+}
+
+fn set_remote_delta_cursor_timestamp(
+    conn: &Connection,
+    source_device_id: &str,
+    timestamp: i64,
+) -> Result<(), AppError> {
+    let key = remote_delta_cursor_key(source_device_id);
+    set_config_value(conn, &key, &timestamp.to_string())
 }
 
 fn map_s3_error(op: &str, err: Box<dyn StdError>) -> AppError {
@@ -781,4 +985,57 @@ fn mask_credential(value: &str) -> String {
     let prefix = String::from_utf8_lossy(&s[..head]);
     let suffix = String::from_utf8_lossy(&s[s.len() - tail..]);
     format!("{}***{}", prefix, suffix)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_remote_delta_object, select_latest_snapshot};
+    use crate::sync::S3ObjectSummary;
+
+    #[test]
+    fn parse_remote_delta_object_supports_legacy_key() {
+        let key = "deltas/device-a/delta-1700000000.gz";
+        let parsed = parse_remote_delta_object(key).expect("should parse legacy key");
+        assert_eq!(parsed.source_device_id, "device-a");
+        assert_eq!(parsed.timestamp, 1_700_000_000);
+        assert_eq!(parsed.key, key);
+    }
+
+    #[test]
+    fn parse_remote_delta_object_supports_new_key_format() {
+        let key =
+            "deltas/device-a/delta-1700000000123456789-550e8400-e29b-41d4-a716-446655440000.gz";
+        let parsed = parse_remote_delta_object(key).expect("should parse new key format");
+        assert_eq!(parsed.source_device_id, "device-a");
+        assert_eq!(parsed.timestamp, 1_700_000_000_123_456_789);
+        assert_eq!(parsed.key, key);
+    }
+
+    #[test]
+    fn parse_remote_delta_object_rejects_invalid_key() {
+        assert!(parse_remote_delta_object("deltas/device-a/not-a-delta.gz").is_none());
+        assert!(parse_remote_delta_object("delta-1700000000.gz").is_none());
+    }
+
+    #[test]
+    fn select_latest_snapshot_picks_highest_last_modified_then_key() {
+        let snapshots = vec![
+            S3ObjectSummary {
+                key: "snapshots/latest-b.gz".to_string(),
+                last_modified_unix: Some(100),
+            },
+            S3ObjectSummary {
+                key: "snapshots/latest-a.gz".to_string(),
+                last_modified_unix: Some(100),
+            },
+            S3ObjectSummary {
+                key: "snapshots/latest-c.gz".to_string(),
+                last_modified_unix: Some(101),
+            },
+        ];
+
+        let latest = select_latest_snapshot(&snapshots).expect("should pick one snapshot");
+        assert_eq!(latest.key, "snapshots/latest-c.gz");
+        assert_eq!(latest.last_modified_unix, Some(101));
+    }
 }

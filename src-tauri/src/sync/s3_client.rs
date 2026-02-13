@@ -5,6 +5,12 @@ use aws_sdk_s3::config::Region;
 use aws_sdk_s3::Client;
 use std::time::Instant;
 
+#[derive(Debug, Clone)]
+pub struct S3ObjectSummary {
+    pub key: String,
+    pub last_modified_unix: Option<i64>,
+}
+
 pub struct S3SyncClient {
     client: Client,
     pub bucket: String,
@@ -49,6 +55,8 @@ impl S3SyncClient {
             RegionProviderChain::default_provider().or_else("us-east-1")
         };
 
+        let force_path_style = should_force_path_style_for_endpoint(&endpoint);
+
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
             .region(region_provider)
             .endpoint_url(endpoint)
@@ -56,10 +64,10 @@ impl S3SyncClient {
             .load()
             .await;
 
-        // Use virtual-hosted style for S3-compatible endpoints.
-        // For Aliyun OSS, this is required (SecondLevelDomainForbidden).
+        // For local MinIO-style endpoints, use path-style to avoid bucket-subdomain parsing issues.
+        // For cloud providers (AWS S3 / R2 / OSS), keep virtual-hosted style by default.
         let s3_config = aws_sdk_s3::config::Builder::from(&config)
-            .force_path_style(false)
+            .force_path_style(force_path_style)
             .build();
         let client = Client::from_conf(s3_config);
 
@@ -127,24 +135,56 @@ impl S3SyncClient {
         Ok(data)
     }
 
-    /// List objects with prefix
+    /// List objects with prefix (paginated)
     pub async fn list(&self, prefix: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        let resp = self
-            .client
-            .list_objects_v2()
-            .bucket(&self.bucket)
-            .prefix(prefix)
-            .send()
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+        let summaries = self.list_with_metadata(prefix).await?;
+        Ok(summaries.into_iter().map(|s| s.key).collect())
+    }
 
-        let keys = resp
-            .contents()
-            .iter()
-            .filter_map(|obj| obj.key().map(String::from))
-            .collect();
+    /// List objects with metadata (paginated).
+    pub async fn list_with_metadata(
+        &self,
+        prefix: &str,
+    ) -> Result<Vec<S3ObjectSummary>, Box<dyn std::error::Error>> {
+        let mut continuation_token: Option<String> = None;
+        let mut objects = Vec::new();
 
-        Ok(keys)
+        loop {
+            let mut req = self
+                .client
+                .list_objects_v2()
+                .bucket(&self.bucket)
+                .prefix(prefix);
+
+            if let Some(token) = &continuation_token {
+                req = req.continuation_token(token);
+            }
+
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+            for obj in resp.contents() {
+                if let Some(key) = obj.key() {
+                    objects.push(S3ObjectSummary {
+                        key: key.to_string(),
+                        last_modified_unix: obj.last_modified().map(|dt| dt.secs()),
+                    });
+                }
+            }
+
+            if resp.is_truncated().unwrap_or(false) {
+                continuation_token = resp.next_continuation_token().map(ToString::to_string);
+                if continuation_token.is_none() {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(objects)
     }
 
     /// Test connection to bucket with minimal request.
@@ -216,4 +256,70 @@ fn infer_region_from_endpoint(endpoint: &str) -> Option<String> {
     }
 
     None
+}
+
+fn should_force_path_style_for_endpoint(endpoint: &str) -> bool {
+    let host = extract_endpoint_host(endpoint);
+    let host_lc = host.to_ascii_lowercase();
+
+    host_lc == "localhost"
+        || host_lc == "127.0.0.1"
+        || host_lc == "::1"
+        || host_lc.ends_with(".nip.io")
+        || host_lc.ends_with(".local")
+        || host_lc.contains("minio")
+}
+
+fn extract_endpoint_host(endpoint: &str) -> String {
+    let authority = endpoint
+        .split("://")
+        .nth(1)
+        .unwrap_or(endpoint)
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .trim();
+
+    if authority.starts_with('[') {
+        return authority
+            .trim_start_matches('[')
+            .split(']')
+            .next()
+            .unwrap_or("")
+            .to_string();
+    }
+
+    authority.split(':').next().unwrap_or(authority).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_force_path_style_for_endpoint;
+
+    #[test]
+    fn should_force_path_style_for_local_endpoints() {
+        assert!(should_force_path_style_for_endpoint(
+            "http://localhost:9000"
+        ));
+        assert!(should_force_path_style_for_endpoint(
+            "http://127.0.0.1:9000"
+        ));
+        assert!(should_force_path_style_for_endpoint(
+            "http://127.0.0.1.nip.io:9000"
+        ));
+        assert!(should_force_path_style_for_endpoint("http://minio:9000"));
+    }
+
+    #[test]
+    fn should_not_force_path_style_for_cloud_endpoints() {
+        assert!(!should_force_path_style_for_endpoint(
+            "https://bucket.s3.us-east-1.amazonaws.com"
+        ));
+        assert!(!should_force_path_style_for_endpoint(
+            "https://account-id.r2.cloudflarestorage.com"
+        ));
+        assert!(!should_force_path_style_for_endpoint(
+            "https://oss-cn-shanghai.aliyuncs.com"
+        ));
+    }
 }
