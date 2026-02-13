@@ -28,6 +28,13 @@ export interface SyncStatusDto {
   last_error?: string;
 }
 
+export interface SyncTestConnectionReq {
+  bucket?: string;
+  endpoint?: string;
+  access_key?: string;
+  secret_key?: string;
+}
+
 export const syncApi = {
   async getConfig(): Promise<SyncConfigDto> {
     return await invoke<SyncConfigDto>('cmd_sync_get_config');
@@ -45,7 +52,10 @@ export const syncApi = {
     return await invoke<string>('cmd_sync_reveal_secret_key');
   },
 
-  async testConnection(): Promise<string> {
+  async testConnection(req?: SyncTestConnectionReq): Promise<string> {
+    if (req) {
+      return await invoke<string>('cmd_sync_test_connection', { req });
+    }
     return await invoke<string>('cmd_sync_test_connection');
   },
 

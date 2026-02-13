@@ -3,7 +3,12 @@
  * 负责协调前端与后端的同步操作
  */
 
-import { syncApi, type SyncConfigDto, type SyncStatusDto } from '../api/sync';
+import {
+  syncApi,
+  type SyncConfigDto,
+  type SyncStatusDto,
+  type SyncTestConnectionReq,
+} from '../api/sync';
 import { logger } from '../utils/logger';
 
 export interface SyncState {
@@ -72,8 +77,21 @@ export class SyncManager {
     return await syncApi.revealSecretKey();
   }
 
-  async testConnection(): Promise<string> {
-    return await syncApi.testConnection();
+  async testConnection(req?: {
+    bucket?: string;
+    endpoint?: string;
+    accessKey?: string;
+    secretKey?: string;
+  }): Promise<string> {
+    const payload: SyncTestConnectionReq | undefined = req
+      ? {
+          bucket: req.bucket,
+          endpoint: req.endpoint,
+          access_key: req.accessKey,
+          secret_key: req.secretKey,
+        }
+      : undefined;
+    return await syncApi.testConnection(payload);
   }
 
   /**

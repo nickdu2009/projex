@@ -408,7 +408,9 @@ ORDER BY h.changed_at DESC;
 - **桌面壳**：Tauri（macOS）
 - **前端**：React + TypeScript
 - **构建工具**：Vite
-- **本地存储**：SQLite（DB 文件放 `~/Library/Application Support/<AppName>/app.db`）
+- **本地存储**：SQLite
+  - 所有 profile（含 `default`）：`~/Library/Application Support/<AppName>/profiles/<profile>/app.db`
+  - 日志与数据共用 profile 根目录：`~/Library/Application Support/<AppName>/profiles/<profile>/logs/`
 - **后端（Tauri Rust）**：
   - 数据访问：`rusqlite`（同步、事务清晰，适合个人本地应用）
   - 序列化：`serde` / `serde_json`
@@ -453,6 +455,15 @@ flowchart TB
   - 打开 DB（如不存在则创建）
   - `BEGIN IMMEDIATE` 执行 migrations（保证单实例一致性）
   - 失败则回滚并提示（避免部分迁移导致损坏）
+
+### 13.4.1 多实例（Profile）运行策略
+- 支持通过 `--profile <name>`（或环境变量 `PROJEX_PROFILE`）指定运行 profile；默认值 `default`。
+- profile 名称仅允许 `[a-zA-Z0-9_-]`，并在运行时归一化为小写。
+- **公共目录**：每个 profile 使用统一根目录 `.../profiles/<profile>/`，其中 `app.db` 与 `logs/` 并存。
+- **同 profile 互斥**：启动时对 profile 目录下 `app.lock` 获取独占锁，避免多个进程并发写同一 DB。
+- **跨 profile 并行**：不同 profile 使用独立 DB 文件，可并行运行。
+- 日志文件按 profile 隔离：统一使用 `logs/rust-<profile>.log` 与 `logs/webview-<profile>.log`（包含 `default`）。
+- SQLite 连接启用 `WAL` + `busy_timeout`（5s），降低并发读写冲突风险。
 
 ### 13.5 核心命令（Commands）建议清单（MVP）
 > 命名使用英文，保持 API 稳定；返回统一 `Result<Dto, AppError>`。
@@ -929,10 +940,18 @@ type SyncEnableReq = { enabled: boolean };
 
 **5) `cmd_sync_test_connection`**
 ```ts
-// Req: void
+type SyncTestConnectionReq = {
+  bucket?: string;
+  endpoint?: string;
+  access_key?: string;
+  secret_key?: string;
+};
+// Req: SyncTestConnectionReq | void
 // Resp: string // e.g. "Connection OK"
 ```
 **行为/校验**
+- Settings 编辑态点击“测试连接”前，前端先做本地必填校验（`bucket/accessKey/secretKey`）；不通过时直接提示，避免无效后端请求。
+- 若传入请求体，优先使用请求体中的非空字段；缺失字段回退到已保存配置（用于“未保存草稿”测试）。
 - 配置不完整时返回 `SYNC_CONFIG_INCOMPLETE`。
 - 远端对象存储错误统一映射为稳定错误码（如 `SYNC_ERROR`）。
 - 自定义 endpoint 的寻址策略：

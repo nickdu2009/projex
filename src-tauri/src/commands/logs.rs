@@ -2,12 +2,13 @@
 
 use crate::error::AppError;
 use crate::infra::DbPool;
+use crate::AppRuntimeState;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
-use tauri::{Manager, State};
+use tauri::State;
 
 // 最大读取字节数上限：2MB
 const MAX_TAIL_BYTES: usize = 2 * 1024 * 1024;
@@ -58,14 +59,20 @@ pub struct LogClearReq {
     pub file_name: String,
 }
 
+fn allowed_log_bases(profile_name: &str) -> [String; 2] {
+    [
+        format!("rust-{}.log", profile_name),
+        format!("webview-{}.log", profile_name),
+    ]
+}
+
 /// 白名单文件名校验
-/// 只允许读取 rust.log, webview.log 及其轮转后缀（例如 rust.log.1, rust.log.2）
-fn validate_log_file_name(name: &str) -> Result<(), AppError> {
-    // 允许的基础文件名
-    let allowed_bases = ["rust.log", "webview.log"];
+/// 仅允许当前 profile 对应的 rust/webview 日志及轮转后缀（例如 xxx.log.1, xxx.log.2）
+fn validate_log_file_name(name: &str, profile_name: &str) -> Result<(), AppError> {
+    let allowed_bases = allowed_log_bases(profile_name);
 
     // 直接匹配基础文件名
-    if allowed_bases.contains(&name) {
+    if allowed_bases.iter().any(|base| base == name) {
         return Ok(());
     }
 
@@ -81,16 +88,17 @@ fn validate_log_file_name(name: &str) -> Result<(), AppError> {
     }
 
     Err(AppError::LogFile(format!(
-        "Invalid log file name: {}. Only rust.log, webview.log and their rotated versions are allowed.",
-        name
+        "Invalid log file name: {}. Allowed files for profile '{}': {}, {} and rotated versions.",
+        name, profile_name, allowed_bases[0], allowed_bases[1]
     )))
 }
 
 /// 获取日志目录路径
-fn get_log_dir(app: &tauri::AppHandle) -> Result<PathBuf, AppError> {
-    app.path()
-        .app_log_dir()
-        .map_err(|e| AppError::LogIo(format!("Failed to get log dir: {}", e)))
+fn get_log_dir(runtime: &AppRuntimeState) -> Result<PathBuf, AppError> {
+    let log_dir = runtime.log_dir();
+    fs::create_dir_all(&log_dir)
+        .map_err(|e| AppError::LogIo(format!("Failed to ensure log dir {:?}: {}", log_dir, e)))?;
+    Ok(log_dir)
 }
 
 /// 从 sync_config 读取需要脱敏的凭据
@@ -137,8 +145,11 @@ fn redact_content(content: &str, patterns: &[String]) -> String {
 
 /// List all log files in the app log directory.
 #[tauri::command]
-pub fn cmd_log_list_files(app: tauri::AppHandle) -> Result<Vec<LogFileDto>, AppError> {
-    let log_dir = get_log_dir(&app)?;
+pub fn cmd_log_list_files(
+    runtime: State<'_, AppRuntimeState>,
+) -> Result<Vec<LogFileDto>, AppError> {
+    let log_dir = get_log_dir(runtime.inner())?;
+    let profile_name = runtime.profile_name();
 
     if !log_dir.exists() {
         return Ok(Vec::new());
@@ -161,7 +172,7 @@ pub fn cmd_log_list_files(app: tauri::AppHandle) -> Result<Vec<LogFileDto>, AppE
             .to_string();
 
         // 只返回白名单内的文件
-        if validate_log_file_name(&file_name).is_err() {
+        if validate_log_file_name(&file_name, profile_name).is_err() {
             continue;
         }
 
@@ -194,17 +205,17 @@ pub fn cmd_log_list_files(app: tauri::AppHandle) -> Result<Vec<LogFileDto>, AppE
 /// Read the tail of a log file with optional redaction.
 #[tauri::command]
 pub fn cmd_log_tail(
-    app: tauri::AppHandle,
     pool: State<DbPool>,
+    runtime: State<'_, AppRuntimeState>,
     req: LogTailReq,
 ) -> Result<LogTailResp, AppError> {
     // 白名单校验
-    validate_log_file_name(&req.file_name)?;
+    validate_log_file_name(&req.file_name, runtime.profile_name())?;
 
     // 限制 max_bytes
     let max_bytes = req.max_bytes.min(MAX_TAIL_BYTES);
 
-    let log_dir = get_log_dir(&app)?;
+    let log_dir = get_log_dir(runtime.inner())?;
     let file_path = log_dir.join(&req.file_name);
 
     if !file_path.exists() {
@@ -266,11 +277,14 @@ pub fn cmd_log_tail(
 
 /// Clear (truncate) a log file.
 #[tauri::command]
-pub fn cmd_log_clear(app: tauri::AppHandle, req: LogClearReq) -> Result<String, AppError> {
+pub fn cmd_log_clear(
+    runtime: State<'_, AppRuntimeState>,
+    req: LogClearReq,
+) -> Result<String, AppError> {
     // 白名单校验
-    validate_log_file_name(&req.file_name)?;
+    validate_log_file_name(&req.file_name, runtime.profile_name())?;
 
-    let log_dir = get_log_dir(&app)?;
+    let log_dir = get_log_dir(runtime.inner())?;
     let file_path = log_dir.join(&req.file_name);
 
     if !file_path.exists() {
@@ -357,37 +371,49 @@ mod tests {
     #[test]
     fn test_validate_log_file_name_valid_base_files() {
         // 基础文件名应该通过
-        assert!(validate_log_file_name("rust.log").is_ok());
-        assert!(validate_log_file_name("webview.log").is_ok());
+        assert!(validate_log_file_name("rust-default.log", "default").is_ok());
+        assert!(validate_log_file_name("webview-default.log", "default").is_ok());
     }
 
     #[test]
     fn test_validate_log_file_name_valid_rotated_files() {
         // 轮转文件应该通过
-        assert!(validate_log_file_name("rust.log.1").is_ok());
-        assert!(validate_log_file_name("rust.log.12").is_ok());
-        assert!(validate_log_file_name("webview.log.1").is_ok());
-        assert!(validate_log_file_name("webview.log.999").is_ok());
+        assert!(validate_log_file_name("rust-default.log.1", "default").is_ok());
+        assert!(validate_log_file_name("rust-default.log.12", "default").is_ok());
+        assert!(validate_log_file_name("webview-default.log.1", "default").is_ok());
+        assert!(validate_log_file_name("webview-default.log.999", "default").is_ok());
+    }
+
+    #[test]
+    fn test_validate_log_file_name_non_default_profile() {
+        assert!(validate_log_file_name("rust-work.log", "work").is_ok());
+        assert!(validate_log_file_name("webview-work.log", "work").is_ok());
+        assert!(validate_log_file_name("rust-work.log.1", "work").is_ok());
+        assert!(validate_log_file_name("webview-work.log.2", "work").is_ok());
+
+        // Different profile file should be rejected.
+        assert!(validate_log_file_name("rust-default.log", "work").is_err());
+        assert!(validate_log_file_name("rust.log", "work").is_err());
     }
 
     #[test]
     fn test_validate_log_file_name_invalid_files() {
         // 其他文件应该被拒绝
-        assert!(validate_log_file_name("other.log").is_err());
-        assert!(validate_log_file_name("rust").is_err());
-        assert!(validate_log_file_name("rust.log.txt").is_err());
-        assert!(validate_log_file_name("../etc/passwd").is_err());
-        assert!(validate_log_file_name("rust.log.abc").is_err());
-        assert!(validate_log_file_name("rust.log.").is_err());
+        assert!(validate_log_file_name("other.log", "default").is_err());
+        assert!(validate_log_file_name("rust", "default").is_err());
+        assert!(validate_log_file_name("rust-default.log.txt", "default").is_err());
+        assert!(validate_log_file_name("../etc/passwd", "default").is_err());
+        assert!(validate_log_file_name("rust-default.log.abc", "default").is_err());
+        assert!(validate_log_file_name("rust-default.log.", "default").is_err());
     }
 
     #[test]
     fn test_validate_log_file_name_path_traversal() {
         // 路径穿越应该被拒绝
-        assert!(validate_log_file_name("../rust.log").is_err());
-        assert!(validate_log_file_name("../../rust.log").is_err());
-        assert!(validate_log_file_name("/etc/passwd").is_err());
-        assert!(validate_log_file_name("subdir/rust.log").is_err());
+        assert!(validate_log_file_name("../rust-default.log", "default").is_err());
+        assert!(validate_log_file_name("../../rust-default.log", "default").is_err());
+        assert!(validate_log_file_name("/etc/passwd", "default").is_err());
+        assert!(validate_log_file_name("subdir/rust-default.log", "default").is_err());
     }
 
     #[test]

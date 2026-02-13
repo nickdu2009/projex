@@ -131,6 +131,14 @@ pub struct SyncEnableReq {
     pub enabled: bool,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SyncTestConnectionReq {
+    pub bucket: Option<String>,
+    pub endpoint: Option<String>,
+    pub access_key: Option<String>,
+    pub secret_key: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SyncConfigResp {
     pub enabled: bool,
@@ -293,25 +301,91 @@ pub async fn cmd_sync_set_enabled(
 
 /// Test S3 connectivity and permissions.
 #[tauri::command]
-pub async fn cmd_sync_test_connection(pool: State<'_, DbPool>) -> Result<String, AppError> {
+pub async fn cmd_sync_test_connection(
+    pool: State<'_, DbPool>,
+    req: Option<SyncTestConnectionReq>,
+) -> Result<String, AppError> {
     let pool_ref = pool.inner();
+    let req = req.unwrap_or(SyncTestConnectionReq {
+        bucket: None,
+        endpoint: None,
+        access_key: None,
+        secret_key: None,
+    });
 
     // Get config
-    let (bucket, endpoint, access_key, secret_key) = {
+    let (saved_bucket, saved_endpoint, saved_access_key, saved_secret_key) = {
         let conn = pool_ref
             .0
             .lock()
             .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
-        let bucket = get_config_value(&conn, "s3_bucket").ok();
-        let endpoint = get_config_value(&conn, "s3_endpoint").ok();
-        let access_key = get_config_value(&conn, "s3_access_key").ok();
-        let secret_key = get_config_value(&conn, "s3_secret_key").ok();
-        (bucket, endpoint, access_key, secret_key)
+        (
+            get_config_value(&conn, "s3_bucket").ok(),
+            get_config_value(&conn, "s3_endpoint").ok(),
+            get_config_value(&conn, "s3_access_key").ok(),
+            get_config_value(&conn, "s3_secret_key").ok(),
+        )
     };
 
-    let bucket = bucket.unwrap_or_default().trim().to_string();
-    let access_key = access_key.unwrap_or_default().trim().to_string();
-    let secret_key = secret_key.unwrap_or_default().trim().to_string();
+    // Prefer request draft values (for unsaved form testing), fallback to persisted values.
+    let bucket = req
+        .bucket
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            saved_bucket
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_default();
+
+    let endpoint = req
+        .endpoint
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            saved_endpoint
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(ToString::to_string)
+        });
+
+    let access_key = req
+        .access_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            saved_access_key
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_default();
+
+    let secret_key = req
+        .secret_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            saved_secret_key
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_default();
 
     if bucket.is_empty() || access_key.is_empty() || secret_key.is_empty() {
         return Err(AppError::SyncConfigIncomplete);

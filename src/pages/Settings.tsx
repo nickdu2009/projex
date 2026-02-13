@@ -305,20 +305,41 @@ export function Settings() {
   };
 
   const handleTestConnection = async () => {
-    setTestingConnection(true);
-    try {
-      const cfg = await syncManager.getConfig();
-      const ok = Boolean(cfg.bucket?.trim()) && Boolean(cfg.access_key?.trim()) && Boolean(cfg.has_secret_key);
-      if (!ok) {
+    if (syncConfigEditing) {
+      // 本地先做一次必填校验，减少无效后端请求。
+      // 注意：编辑态允许“沿用已保存密钥”，因此使用“草稿值 + 已保存值”做有效性判断。
+      const hasBucket = bucket.trim() !== '';
+      const hasAccessKey = accessKey.trim() !== '' || Boolean(syncConfig?.access_key?.trim());
+      const hasSecretKey = secretKey.trim() !== '' || secretKeySaved;
+      if (!hasBucket || !hasAccessKey || !hasSecretKey) {
         showError(t('settings.sync.configIncomplete'));
-        await handleEnterSyncConfigEdit();
         return;
       }
+    }
 
-      await syncManager.testConnection();
+    setTestingConnection(true);
+    try {
+      const draft = syncConfigEditing
+        ? {
+            bucket: bucket.trim(),
+            endpoint: endpoint.trim() || undefined,
+            accessKey: accessKey.trim() || undefined,
+            // Allow fallback to persisted secret when user did not re-enter it.
+            secretKey: secretKey.trim() || undefined,
+          }
+        : undefined;
+
+      await syncManager.testConnection(draft);
       showSuccess(t('settings.sync.testConnectionSuccess'));
     } catch (e: unknown) {
-      const { message } = getErrorCodeAndMessage(e);
+      const { code, message } = getErrorCodeAndMessage(e);
+      if (code === 'SYNC_CONFIG_INCOMPLETE') {
+        showError(t('settings.sync.configIncomplete'));
+        if (!syncConfigEditing) {
+          await handleEnterSyncConfigEdit();
+        }
+        return;
+      }
       showError(message || t('settings.sync.testConnectionFailed'), t('settings.sync.testConnectionFailed'));
     } finally {
       setTestingConnection(false);

@@ -229,6 +229,10 @@ sequenceDiagram
 - 前端：状态展示、参数输入、手动触发。
 - 后端：调度、并发控制、冲突/一致性、S3 IO、事务恢复。
 
+实现细节补充（Settings 测试连接）：
+- 编辑态点击“测试连接”时，前端先本地校验 `bucket/access/secret` 必填，失败直接提示，不发后端请求。
+- 后端 `cmd_sync_test_connection` 支持“草稿参数优先 + 已保存配置回退”，用于未保存配置的连通性验证。
+
 ---
 
 ## 9. NFR 对齐（Security / Scalability / Performance）

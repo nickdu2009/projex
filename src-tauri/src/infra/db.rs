@@ -4,6 +4,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct DbPool(pub Arc<Mutex<Connection>>);
@@ -15,8 +16,17 @@ pub fn init_db(db_path: &Path) -> Result<DbPool, crate::error::AppError> {
     }
     let mut conn =
         Connection::open(db_path).map_err(|e| crate::error::AppError::Db(e.to_string()))?;
+    configure_connection(&conn)?;
     run_migrations(&mut conn)?;
     Ok(DbPool(Arc::new(Mutex::new(conn))))
+}
+
+fn configure_connection(conn: &Connection) -> Result<(), crate::error::AppError> {
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(|e| crate::error::AppError::Db(e.to_string()))?;
+    conn.busy_timeout(Duration::from_secs(5))
+        .map_err(|e| crate::error::AppError::Db(e.to_string()))?;
+    Ok(())
 }
 
 fn run_migrations(conn: &mut Connection) -> Result<(), crate::error::AppError> {

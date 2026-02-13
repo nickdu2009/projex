@@ -167,7 +167,7 @@ flowchart LR
 | `cmd_sync_get_config` | 读取同步配置 | 含 `auto_sync_interval_minutes` |
 | `cmd_sync_update_config` | 更新同步配置 | 更新后重启后端调度器 |
 | `cmd_sync_set_enabled` | 启停同步 | 启用时校验 S3 必填配置 |
-| `cmd_sync_test_connection` | 测试桶连通性与权限 | 支持自定义 endpoint |
+| `cmd_sync_test_connection` | 测试桶连通性与权限 | 支持自定义 endpoint，支持“草稿参数优先 + 已保存配置回退” |
 | `cmd_sync_get_status` | 获取同步状态 | `is_syncing/pending_changes/last_error` |
 | `cmd_sync_full` | 完整同步 | 先上传本地 Delta，再拉取并应用远端 Delta |
 | `cmd_sync_create_snapshot` | 创建并上传快照 | 路径 `snapshots/latest-<device_id>.gz` |
@@ -332,6 +332,7 @@ sequenceDiagram
 
 - Layout 启动时读取配置，启用同步则展示 `SyncStatusBar`；
 - 自动同步由后端 scheduler 主导（前端仅负责触发和展示）；
+- Settings 编辑态点击“测试连接”时，前端先做本地必填校验（bucket/access/secret），校验失败不发后端请求；
 - 错误通过统一 error/toast 通道反馈，前端不做 SQL/冲突逻辑判断。
 
 ---
@@ -426,6 +427,7 @@ sequenceDiagram
 
 - 打开 `Settings` 页面：
   - 填 `bucket/endpoint/accessKey/secretKey`
+  - 编辑态会先本地校验必填项（bucket/accessKey/secretKey）
   - 点“测试连接”
   - 启用同步开关
   - 设定 `auto_sync_interval_minutes`

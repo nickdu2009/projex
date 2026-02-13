@@ -198,6 +198,8 @@ flowchart LR
 - [x] 重命名 `export.rs` → `data_transfer.rs`（反映导入导出双向职责）
 - [x] 自动同步调度迁移到 Rust 后端 scheduler（前端不持有主定时器）
 - [x] `sync_lock + is_syncing` 并发控制，避免手动同步与定时同步并发执行
+- [x] 同步设置 UX 优化：编辑态点击“测试连接”前先做本地必填校验（bucket/access/secret），减少一次无效后端往返
+- [x] `cmd_sync_test_connection` 支持草稿参数优先 + 已保存配置回退，支持“未保存草稿”连通性测试
 
 #### 4.6 测试覆盖
 - [x] 后端全量测试通过（覆盖 sync/snapshot/conflict/trigger 等关键路径）

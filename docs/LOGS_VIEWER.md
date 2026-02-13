@@ -10,8 +10,8 @@ Projex 内置了完整的日志查看功能，用户可以在应用内直接查�
 ## 核心特性
 
 ### 1. 自动日志管理
-- **分离记录**：前端日志（`webview.log`）与后端日志（`rust.log`）分开存储
-- **智能轮转**：单个文件最大 10MB，超过后自动创建新文件（如 `rust.log.1`）
+- **分离记录**：前端日志（`webview-<profile>.log`）与后端日志（`rust-<profile>.log`）分开存储
+- **智能轮转**：单个文件最大 10MB，超过后自动创建新文件（如 `rust-default.log.1`）
 - **空间控制**：仅保留最近 5 个文件，自动清理旧日志
 - **级别控制**：
   - Debug 模式：Info 级别（详细信息）
@@ -52,8 +52,8 @@ Projex 内置了完整的日志查看功能，用户可以在应用内直接查�
 
 #### 1. 选择日志文件
 顶部有文件选择器，可以切换：
-- **rust.log** - 后端日志（Rust 代码、数据库操作、S3 同步等）
-- **webview.log** - 前端日志（React 组件、用户操作、UI 事件等）
+- **rust-<profile>.log** - 后端日志（Rust 代码、数据库操作、S3 同步等）
+- **webview-<profile>.log** - 前端日志（React 组件、用户操作、UI 事件等）
 
 #### 2. 浏览日志内容
 - 日志按时间倒序显示（最新的在上）
@@ -135,7 +135,7 @@ Projex 内置了完整的日志查看功能，用户可以在应用内直接查�
 
 **步骤**：
 1. 进入日志查看器
-2. 选择 `rust.log`（后端日志）
+2. 选择 `rust-<profile>.log`（后端日志）
 3. 搜索 "sync" 或 "S3"
 4. 查看错误信息，定位问题原因
 
@@ -155,7 +155,7 @@ Projex 内置了完整的日志查看功能，用户可以在应用内直接查�
 
 **步骤**：
 1. 开始导入操作
-2. 打开日志查看器，选择 `rust.log`
+2. 打开日志查看器，选择 `rust-<profile>.log`
 3. 开启"自动刷新"
 4. 实时查看导入进度和可能的错误
 
@@ -175,34 +175,34 @@ Projex 内置了完整的日志查看功能，用户可以在应用内直接查�
 
 日志文件存储在系统的应用数据目录：
 
-- **macOS**：`~/Library/Application Support/com.nickdu.projex/logs/`
-- **Windows**：`%APPDATA%\com.nickdu.projex\logs\`
-- **Linux**：`~/.local/share/com.nickdu.projex/logs/`
+- **macOS**：`~/Library/Application Support/com.nickdu.projex/profiles/<profile>/logs/`
+- **Windows**：`%APPDATA%\com.nickdu.projex\profiles\<profile>\logs\`
+- **Linux**：`~/.local/share/com.nickdu.projex/profiles/<profile>/logs/`
 
 ### 日志轮转规则
 
 ```
-rust.log          # 当前日志文件（最新）
-rust.log.1        # 第一次轮转（上一个文件）
-rust.log.2        # 第二次轮转
-rust.log.3        # 第三次轮转
-rust.log.4        # 第四次轮转（最旧的保留文件）
+rust-default.log          # 当前日志文件（最新）
+rust-default.log.1        # 第一次轮转（上一个文件）
+rust-default.log.2        # 第二次轮转
+rust-default.log.3        # 第三次轮转
+rust-default.log.4        # 第四次轮转（最旧的保留文件）
 ```
 
-当 `rust.log` 达到 10MB 时：
-1. 删除 `rust.log.4`（如果存在）
-2. 重命名 `rust.log.3` → `rust.log.4`
-3. 重命名 `rust.log.2` → `rust.log.3`
-4. 重命名 `rust.log.1` → `rust.log.2`
-5. 重命名 `rust.log` → `rust.log.1`
-6. 创建新的 `rust.log`
+当 `rust-default.log` 达到 10MB 时：
+1. 删除 `rust-default.log.4`（如果存在）
+2. 重命名 `rust-default.log.3` → `rust-default.log.4`
+3. 重命名 `rust-default.log.2` → `rust-default.log.3`
+4. 重命名 `rust-default.log.1` → `rust-default.log.2`
+5. 重命名 `rust-default.log` → `rust-default.log.1`
+6. 创建新的 `rust-default.log`
 
 ### 安全限制
 
 #### 白名单机制
 后端仅允许读取以下文件：
-- `rust.log` 及其轮转文件（`rust.log.1` ~ `rust.log.4`）
-- `webview.log` 及其轮转文件（`webview.log.1` ~ `webview.log.4`）
+- `rust-<profile>.log` 及其轮转文件（`rust-<profile>.log.1` ~ `rust-<profile>.log.4`）
+- `webview-<profile>.log` 及其轮转文件（`webview-<profile>.log.1` ~ `webview-<profile>.log.4`）
 
 拒绝访问：
 - 系统文件（如 `/etc/passwd`）
