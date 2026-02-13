@@ -485,7 +485,7 @@ impl<'a> DeltaSyncEngine<'a> {
 
         let sql = format!("SELECT _version FROM {} WHERE id = ?1", table);
         match tx.query_row(&sql, params![record_id], |row: &rusqlite::Row<'_>| {
-            row.get(0)
+            row.get::<_, i64>(0)
         }) {
             Ok(local_version) => {
                 if remote_version < local_version {
