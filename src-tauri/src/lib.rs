@@ -132,6 +132,7 @@ fn acquire_profile_lock(data_dir: &Path, profile_name: &str) -> Result<File, Str
     let lock_path = data_dir.join("app.lock");
     let lock_file = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(&lock_path)
@@ -214,7 +215,7 @@ pub fn run() {
                         Target::new(TargetKind::Webview),
                         Target::new(TargetKind::Folder {
                             path: log_dir.clone(),
-                            file_name: Some(webview_log_target.into()),
+                            file_name: Some(webview_log_target),
                         })
                         .filter(|metadata| {
                             metadata
@@ -223,7 +224,7 @@ pub fn run() {
                         }),
                         Target::new(TargetKind::Folder {
                             path: log_dir.clone(),
-                            file_name: Some(rust_log_target.into()),
+                            file_name: Some(rust_log_target),
                         })
                         .filter(|metadata| {
                             !metadata
