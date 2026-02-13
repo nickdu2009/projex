@@ -194,8 +194,6 @@ feat(sync): implement delta sync with S3
 - Add sync_metadata table with SQLite triggers for change tracking
 - Upload compressed deltas to S3 with vector clock metadata
 - Support both AWS S3 and Cloudflare R2 endpoints
-
-Co-authored-by: Cursor <cursoragent@cursor.com>
 ```
 
 **破坏性变更**：
