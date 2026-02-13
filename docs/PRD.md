@@ -935,6 +935,9 @@ type SyncEnableReq = { enabled: boolean };
 **行为/校验**
 - 配置不完整时返回 `SYNC_CONFIG_INCOMPLETE`。
 - 远端对象存储错误统一映射为稳定错误码（如 `SYNC_ERROR`）。
+- 自定义 endpoint 的寻址策略：
+  - 本地/开发 endpoint（如 `localhost`、`127.0.0.1`、`*.nip.io`、`minio`）自动使用 path-style；
+  - 云端 endpoint（AWS S3 / Cloudflare R2 / Aliyun OSS）默认使用 virtual-hosted style。
 
 **6) `cmd_sync_get_status`**
 ```ts
@@ -957,6 +960,8 @@ type SyncStatusDto = {
 - 远端增量对象路径：`deltas/<device_id>/delta-<unix_nanos>-<uuid>.gz`。
 - 兼容旧对象键：`deltas/<device_id>/delta-<unix_timestamp>.gz`（读取阶段兼容解析）。
 - 每源设备游标：`last_remote_delta_ts::<source_device_id>`（存于 `sync_config`）。
+- 校验失败（如 checksum mismatch）时必须中止本次同步并返回 `SYNC_ERROR`，且不得推进源设备游标。
+- 失败后写入 `last_sync_error`；成功后更新 `last_sync` 并清空 `last_sync_error`。
 
 **8) `cmd_sync_create_snapshot` / `cmd_sync_restore_snapshot`**
 ```ts
@@ -967,6 +972,19 @@ type SyncStatusDto = {
 - 快照对象路径：`snapshots/latest-<device_id>.gz`。
 - create: 导出全量 JSON，checksum 校验后上传。
 - restore: 下载快照后事务恢复（含 comments/tags/status history）。
+
+**9) Sync 自动化测试与 CI 口径**
+- 集成测试：`src-tauri/tests/test_s3_minio.rs`
+  - smoke（upload/download/delete）
+  - `list_objects_v2` 分页（>1000 对象）
+- 端到端测试：`src-tauri/tests/test_sync_e2e_minio.rs`
+  - 双设备闭环、删除传播、stale remote 保护
+  - 网络故障恢复、checksum 损坏拒绝与恢复
+  - 三设备乱序收敛、scheduler/manual 锁竞争
+  - snapshot create/restore、多表联动（projects/tags/comments）
+- CI：`.github/workflows/ci.yml` 中 `sync-minio-e2e` job
+  - 启动本地 MinIO 后执行上述两组测试
+  - 通过路径过滤仅在同步相关改动时触发（减少无关改动耗时）
 
 #### 13.9.6 前端 `invoke()` 包装建议
 前端建议封装统一调用器，做：

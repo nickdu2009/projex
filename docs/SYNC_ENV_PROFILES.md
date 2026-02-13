@@ -130,5 +130,6 @@ cargo test --test test_sync_e2e_minio -- --nocapture
 
 - 开发与生产使用不同 bucket，避免数据污染。
 - 密钥不要提交到仓库；仅提交 `*.example` 模板。
-- CI 中可配置一个独立 MinIO job 做同步烟测。
+- CI 已接入 `sync-minio-e2e` job：自动启动 MinIO 并执行 `test_s3_minio` + `test_sync_e2e_minio`。
+- 为减少耗时，CI 通过路径过滤仅在同步相关文件变更时触发该 job。
 
