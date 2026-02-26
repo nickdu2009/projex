@@ -43,6 +43,7 @@ export interface ProjectDetail {
   country_code: string;
   partner_id: string;
   owner_person_id: string;
+  product_name: string | null;
   start_date: string | null;
   due_date: string | null;
   created_at: string;
@@ -86,6 +87,7 @@ export const projectApi = {
     countryCode: string;
     partnerId: string;
     ownerPersonId: string;
+    productName?: string;
     description?: string;
     priority?: number;
     startDate?: string;
@@ -99,6 +101,7 @@ export const projectApi = {
     priority?: number;
     countryCode?: string;
     ownerPersonId?: string;
+    productName?: string;
     startDate?: string | null;
     dueDate?: string | null;
     tags?: string[];

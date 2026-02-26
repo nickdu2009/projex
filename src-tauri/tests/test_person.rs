@@ -265,6 +265,7 @@ fn seed_project_for_person(pool: &app_lib::infra::DbPool, owner_id: &str) -> Str
             country_code: "US".to_string(),
             partner_id: partner.id,
             owner_person_id: owner_id.to_string(),
+            product_name: None,
             start_date: None,
             due_date: None,
             tags: None,

@@ -67,6 +67,10 @@ fn run_migrations(conn: &mut Connection) -> Result<(), crate::error::AppError> {
             5,
             include_str!("../../migrations/0005_add_auto_sync_interval.sql"),
         ),
+        (
+            6,
+            include_str!("../../migrations/0006_add_project_product_name.sql"),
+        ),
     ];
 
     for (version, sql) in MIGRATIONS {

@@ -19,6 +19,7 @@ type ProjectRawRow = (
     String,         // country_code
     String,         // partner_id
     String,         // owner_person_id
+    Option<String>, // product_name
     Option<String>, // start_date
     Option<String>, // due_date
     String,         // created_at
@@ -35,6 +36,7 @@ pub struct ProjectCreateReq {
     pub country_code: String,
     pub partner_id: String,
     pub owner_person_id: String,
+    pub product_name: Option<String>,
     pub start_date: Option<String>,
     pub due_date: Option<String>,
     pub tags: Option<Vec<String>>,
@@ -51,6 +53,7 @@ pub struct ProjectDetailDto {
     pub country_code: String,
     pub partner_id: String,
     pub owner_person_id: String,
+    pub product_name: Option<String>,
     pub start_date: Option<String>,
     pub due_date: Option<String>,
     pub created_at: String,
@@ -134,6 +137,7 @@ pub struct ProjectUpdateReq {
     pub priority: Option<i32>,
     pub country_code: Option<String>,
     pub owner_person_id: Option<String>,
+    pub product_name: Option<String>,
     pub start_date: Option<String>,
     pub due_date: Option<String>,
     pub tags: Option<Vec<String>>,
@@ -153,6 +157,33 @@ pub struct ProjectChangeStatusReq {
 
 fn parse_status(s: &str) -> Option<ProjectStatus> {
     s.parse::<ProjectStatus>().ok()
+}
+
+fn ensure_project_name_unique(
+    tx: &rusqlite::Transaction<'_>,
+    name: &str,
+    exclude_id: Option<&str>,
+) -> Result<(), AppError> {
+    let count: i64 = if let Some(exclude) = exclude_id {
+        tx.query_row(
+            "SELECT COUNT(1) FROM projects WHERE name = ?1 COLLATE NOCASE AND id <> ?2",
+            params![name, exclude],
+            |r| r.get(0),
+        )
+        .map_err(|e| AppError::Db(e.to_string()))?
+    } else {
+        tx.query_row(
+            "SELECT COUNT(1) FROM projects WHERE name = ?1 COLLATE NOCASE",
+            params![name],
+            |r| r.get(0),
+        )
+        .map_err(|e| AppError::Db(e.to_string()))?
+    };
+
+    if count > 0 {
+        return Err(AppError::Conflict("project name must be unique".into()));
+    }
+    Ok(())
 }
 
 pub fn project_create(pool: &DbPool, req: ProjectCreateReq) -> Result<ProjectDetailDto, AppError> {
@@ -177,6 +208,11 @@ pub fn project_create(pool: &DbPool, req: ProjectCreateReq) -> Result<ProjectDet
     let partner_id = req.partner_id.trim().to_string();
     let owner_person_id = req.owner_person_id.trim().to_string();
     let country_code = req.country_code.trim().to_uppercase();
+    let product_name = req
+        .product_name
+        .as_deref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     let start_date = req.start_date.filter(|s| !s.trim().is_empty());
     let due_date = req.due_date.filter(|s| !s.trim().is_empty());
     let tags = req.tags.unwrap_or_default();
@@ -188,8 +224,10 @@ pub fn project_create(pool: &DbPool, req: ProjectCreateReq) -> Result<ProjectDet
             .unchecked_transaction()
             .map_err(|e| AppError::Db(e.to_string()))?;
 
+        ensure_project_name_unique(&tx, name, None)?;
+
         tx.execute(
-            "INSERT INTO projects (id, name, description, priority, current_status, country_code, partner_id, owner_person_id, start_date, due_date, created_at, updated_at, archived_at) VALUES (?1, ?2, ?3, ?4, 'BACKLOG', ?5, ?6, ?7, ?8, ?9, ?10, ?10, NULL)",
+            "INSERT INTO projects (id, name, description, priority, current_status, country_code, partner_id, owner_person_id, product_name, start_date, due_date, created_at, updated_at, archived_at) VALUES (?1, ?2, ?3, ?4, 'BACKLOG', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, NULL)",
             params![
                 id,
                 name,
@@ -198,6 +236,7 @@ pub fn project_create(pool: &DbPool, req: ProjectCreateReq) -> Result<ProjectDet
                 country_code,
                 partner_id,
                 owner_person_id,
+                product_name,
                 start_date,
                 due_date,
                 &now
@@ -241,7 +280,7 @@ pub fn project_get(pool: &DbPool, project_id: &str) -> Result<ProjectDetailDto, 
 
     let proj: ProjectRawRow = conn
         .query_row(
-            "SELECT id, name, description, priority, current_status, country_code, partner_id, owner_person_id, start_date, due_date, created_at, updated_at, archived_at FROM projects WHERE id = ?1",
+            "SELECT id, name, description, priority, current_status, country_code, partner_id, owner_person_id, product_name, start_date, due_date, created_at, updated_at, archived_at FROM projects WHERE id = ?1",
             [project_id],
             |r| {
                 Ok((
@@ -258,6 +297,7 @@ pub fn project_get(pool: &DbPool, project_id: &str) -> Result<ProjectDetailDto, 
                     r.get(10)?,
                     r.get(11)?,
                     r.get(12)?,
+                    r.get(13)?,
                 ))
             },
         )
@@ -339,11 +379,12 @@ pub fn project_get(pool: &DbPool, project_id: &str) -> Result<ProjectDetailDto, 
         country_code: proj.5,
         partner_id: proj.6.clone(),
         owner_person_id: proj.7.clone(),
-        start_date: proj.8,
-        due_date: proj.9,
-        created_at: proj.10,
-        updated_at: proj.11,
-        archived_at: proj.12,
+        product_name: proj.8,
+        start_date: proj.9,
+        due_date: proj.10,
+        created_at: proj.11,
+        updated_at: proj.12,
+        archived_at: proj.13,
         tags,
         owner_name,
         partner_name,
@@ -364,7 +405,7 @@ pub fn project_update(pool: &DbPool, req: ProjectUpdateReq) -> Result<ProjectDet
             .unchecked_transaction()
             .map_err(|e| AppError::Db(e.to_string()))?;
 
-        let (name, desc, priority, country_code, owner_id, start_date, due_date): (
+        let (name, desc, priority, country_code, owner_id, product_name, start_date, due_date): (
             String,
             String,
             i32,
@@ -372,11 +413,12 @@ pub fn project_update(pool: &DbPool, req: ProjectUpdateReq) -> Result<ProjectDet
             String,
             Option<String>,
             Option<String>,
+            Option<String>,
         ) = tx
             .query_row(
-                "SELECT name, description, priority, country_code, owner_person_id, start_date, due_date FROM projects WHERE id = ?1",
+                "SELECT name, description, priority, country_code, owner_person_id, product_name, start_date, due_date FROM projects WHERE id = ?1",
                 [&req.id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)),
             )
             .map_err(|_| AppError::NotFound(format!("project {}", req.id)))?;
 
@@ -393,6 +435,16 @@ pub fn project_update(pool: &DbPool, req: ProjectUpdateReq) -> Result<ProjectDet
             .as_deref()
             .map(|s| s.trim().to_string())
             .unwrap_or_else(|| owner_id.clone());
+        let product_name = if let Some(s) = req.product_name.as_deref() {
+            let s = s.trim();
+            if s.is_empty() {
+                None
+            } else {
+                Some(s.to_string())
+            }
+        } else {
+            product_name.clone()
+        };
         let start_date = req
             .start_date
             .as_ref()
@@ -409,6 +461,8 @@ pub fn project_update(pool: &DbPool, req: ProjectUpdateReq) -> Result<ProjectDet
         if name.is_empty() {
             return Err(AppError::Validation("name is required".into()));
         }
+
+        ensure_project_name_unique(&tx, &name, Some(&req.id))?;
 
         // If owner changed: demote old owner to member, then ensure new owner has active assignment
         if owner_person_id != owner_id {
@@ -443,13 +497,14 @@ pub fn project_update(pool: &DbPool, req: ProjectUpdateReq) -> Result<ProjectDet
         }
 
         tx.execute(
-            "UPDATE projects SET name=?1, description=?2, priority=?3, country_code=?4, owner_person_id=?5, start_date=?6, due_date=?7, updated_at=?8 WHERE id=?9",
+            "UPDATE projects SET name=?1, description=?2, priority=?3, country_code=?4, owner_person_id=?5, product_name=?6, start_date=?7, due_date=?8, updated_at=?9 WHERE id=?10",
             params![
                 name,
                 desc,
                 priority,
                 country_code,
                 owner_person_id,
+                product_name,
                 start_date,
                 due_date,
                 &now,

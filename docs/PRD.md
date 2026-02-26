@@ -182,6 +182,9 @@ flowchart LR
 ### 7.1 项目（Projects）
 - **创建项目**
   - 必填：`name`、`countryCode`、`partnerId`、`ownerPersonId`
+  - 选填：`productName`（交付的产品名）
+  - 项目名默认自动生成：`countryCode-partnerName-productName`（其中 `productName` 为空时省略最后一段）
+  - 项目名可在创建/编辑时手动修改，但必须保持全局唯一（忽略大小写）
   - 默认：`currentStatus = BACKLOG`
   - 系统行为：
     - 自动创建 Owner 的 `Assignment(endAt=NULL)`
@@ -232,7 +235,11 @@ flowchart LR
 - 导出：单文件 JSON（包含 persons/projects/partners/assignments/statusHistory/comments/tags）
 - 导入：`import_json_string` 幂等导入，`INSERT OR IGNORE` 处理 ID 冲突，按 FK 依赖顺序写入
 - 返回 `ImportResult`（各类型导入数量 + 跳过的重复数量）
-- Schema 版本：version 1（不含 comments）、version 2（含 comments），导入时兼容两个版本
+- Schema 版本：
+  - version 1（不含 comments）
+  - version 2（含 comments）
+  - version 3（新增 `projects.productName`）
+  - 导入时需兼容上述版本
 
 ## 8. 数据模型（SQLite 建议）
 > SQL 注释为英文；复杂约束点用中文补充说明。
@@ -261,6 +268,7 @@ CREATE UNIQUE INDEX idx_partners_name ON partners(name);
 CREATE TABLE projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  product_name TEXT NULL,        -- deliverable product name (optional)
   description TEXT NOT NULL DEFAULT '',
   priority INTEGER NOT NULL DEFAULT 3, -- 1(high)~5(low)
   current_status TEXT NOT NULL,        -- BACKLOG/PLANNED/...
@@ -597,6 +605,7 @@ type AppError = {
 ```ts
 type ProjectCreateReq = {
   name: string;
+  productName?: string; // optional: deliverable product name
   description?: string;
   priority?: 1 | 2 | 3 | 4 | 5;
   countryCode: string; // ISO 3166-1 alpha-2
@@ -611,6 +620,7 @@ type ProjectCreateReq = {
 type ProjectDto = {
   id: string;
   name: string;
+  productName: string | null;
   description: string;
   priority: number;
   countryCode: string;
@@ -638,6 +648,7 @@ type ProjectDto = {
 type ProjectUpdateReq = {
   id: string;
   name?: string;
+  productName?: string; // empty string means clear
   description?: string;
   priority?: 1 | 2 | 3 | 4 | 5;
   countryCode?: string;
@@ -820,7 +831,7 @@ type ExportJsonStringReq = { schemaVersion?: number };
 type ExportJsonStringResp = { schemaVersion: number; exportedAt: string; json: string };
 ```
 
-**导入**：`import_json_string` — 幂等导入 JSON，按 FK 依赖顺序写入，重复 ID 自动跳过。支持 schema version 1（不含 comments）和 version 2（含 comments）。
+**导入**：`import_json_string` — 幂等导入 JSON，按 FK 依赖顺序写入，重复 ID 自动跳过。支持 schema version 1（不含 comments）、version 2（含 comments）和 version 3（新增 `projects.productName`）。
 ```ts
 type ImportJsonReq = { json: string };
 type ImportResult = {

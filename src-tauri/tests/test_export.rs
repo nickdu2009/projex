@@ -17,7 +17,7 @@ fn export_empty_db_returns_valid_json() {
     let json_str = export_json_string(&pool, None).unwrap();
     let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
-    assert_eq!(json["schemaVersion"], 2);
+    assert_eq!(json["schemaVersion"], 3);
     assert!(!json["exportedAt"].as_str().unwrap().is_empty());
     assert_eq!(json["persons"].as_array().unwrap().len(), 0);
     assert_eq!(json["partners"].as_array().unwrap().len(), 0);
@@ -69,6 +69,7 @@ fn export_with_data_contains_all_entities() {
             country_code: "US".to_string(),
             partner_id: partner.id.clone(),
             owner_person_id: owner.id.clone(),
+            product_name: None,
             start_date: Some("2026-01-01".to_string()),
             due_date: None,
             tags: Some(vec!["export".to_string(), "test".to_string()]),
@@ -182,6 +183,7 @@ fn export_uses_camel_case_keys() {
             country_code: "US".to_string(),
             partner_id: partner.id,
             owner_person_id: owner.id,
+            product_name: None,
             start_date: None,
             due_date: None,
             tags: None,
@@ -242,6 +244,7 @@ fn import_into_empty_db_succeeds() {
             country_code: "CN".to_string(),
             partner_id: partner.id.clone(),
             owner_person_id: owner.id.clone(),
+            product_name: None,
             start_date: None,
             due_date: None,
             tags: Some(vec!["imported".to_string()]),
@@ -298,6 +301,7 @@ fn import_duplicate_ids_are_skipped() {
             country_code: "US".to_string(),
             partner_id: partner.id.clone(),
             owner_person_id: owner.id.clone(),
+            product_name: None,
             start_date: None,
             due_date: None,
             tags: None,
@@ -366,6 +370,7 @@ fn import_export_roundtrip_preserves_data() {
             country_code: "JP".to_string(),
             partner_id: partner.id.clone(),
             owner_person_id: owner.id.clone(),
+            product_name: None,
             start_date: Some("2026-03-01".to_string()),
             due_date: Some("2026-12-31".to_string()),
             tags: Some(vec!["alpha".to_string(), "beta".to_string()]),

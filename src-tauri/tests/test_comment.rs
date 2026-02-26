@@ -40,12 +40,13 @@ fn seed(pool: &app_lib::infra::DbPool) -> TestSeedIds {
     let project = project_create(
         pool,
         ProjectCreateReq {
-            name: "Test Project".to_string(),
+            name: format!("Test Project-{}", uuid::Uuid::new_v4()),
             description: Some("Test description".to_string()),
             priority: Some(3),
             country_code: "CN".to_string(),
             partner_id: partner.id.clone(),
             owner_person_id: person.id.clone(),
+            product_name: None,
             start_date: None,
             due_date: None,
             tags: None,

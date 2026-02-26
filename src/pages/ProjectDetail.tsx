@@ -177,9 +177,10 @@ export function ProjectDetail() {
             </Badge>
           </Flex>
           <Text size="sm" style={{ color: 'rgba(255,255,255,0.9)' }}>{project.description || '—'}</Text>
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs" verticalSpacing="xs">
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs" verticalSpacing="xs">
             <Text size="sm" style={{ color: 'white' }}>{t('project.detail.country', { value: project.country_code })}</Text>
             <Text size="sm" style={{ color: 'white' }}>{t('project.detail.partner', { value: project.partner_name })}</Text>
+            <Text size="sm" style={{ color: 'white' }}>{t('project.detail.productName', { value: project.product_name ?? '—' })}</Text>
           </SimpleGrid>
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xs" verticalSpacing="xs">
             <Text size="sm" style={{ color: 'white' }}>{t('project.detail.startDate', { value: project.start_date ?? '—' })}</Text>

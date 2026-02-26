@@ -252,13 +252,14 @@ impl<'a> SnapshotManager<'a> {
         data: &serde_json::Value,
     ) -> Result<(), AppError> {
         tx.execute(
-            "INSERT INTO projects (id, name, description, priority, current_status, country_code, 
+            "INSERT INTO projects (id, name, product_name, description, priority, current_status, country_code, 
                                    partner_id, owner_person_id, start_date, due_date, 
                                    created_at, updated_at, archived_at, _version)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             rusqlite::params![
                 data["id"].as_str(),
                 data["name"].as_str(),
+                data["productName"].as_str(),
                 data["description"].as_str(),
                 data["priority"].as_i64(),
                 data["currentStatus"].as_str(),

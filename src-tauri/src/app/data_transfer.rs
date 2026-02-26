@@ -48,6 +48,7 @@ pub struct ExportPartner {
 pub struct ExportProject {
     pub id: String,
     pub name: String,
+    pub product_name: Option<String>,
     pub description: String,
     pub priority: i32,
     pub current_status: String,
@@ -112,7 +113,7 @@ pub struct ImportResult {
 
 /// Export all data as JSON string
 pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result<String, AppError> {
-    let schema_version = 2; // Current schema version (updated for comments support)
+    let schema_version = 3; // Current schema version (projects.productName added)
     let exported_at = Utc::now().to_rfc3339();
 
     let conn = get_connection(pool);
@@ -158,7 +159,7 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
     // 3. Export projects (with tags)
     let mut projects = Vec::new();
     let mut stmt = conn
-        .prepare("SELECT id, name, description, priority, current_status, country_code, partner_id, owner_person_id, start_date, due_date, created_at, updated_at, archived_at FROM projects ORDER BY created_at DESC")
+        .prepare("SELECT id, name, product_name, description, priority, current_status, country_code, partner_id, owner_person_id, start_date, due_date, created_at, updated_at, archived_at FROM projects ORDER BY created_at DESC")
         .map_err(|e| AppError::Db(e.to_string()))?;
     let mut rows = stmt.query([]).map_err(|e| AppError::Db(e.to_string()))?;
     while let Some(row) = rows.next().map_err(|e| AppError::Db(e.to_string()))? {
@@ -179,17 +180,18 @@ pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result
         projects.push(ExportProject {
             id: project_id,
             name: row.get(1)?,
-            description: row.get(2)?,
-            priority: row.get(3)?,
-            current_status: row.get(4)?,
-            country_code: row.get(5)?,
-            partner_id: row.get(6)?,
-            owner_person_id: row.get(7)?,
-            start_date: row.get(8)?,
-            due_date: row.get(9)?,
-            created_at: row.get(10)?,
-            updated_at: row.get(11)?,
-            archived_at: row.get(12)?,
+            product_name: row.get(2)?,
+            description: row.get(3)?,
+            priority: row.get(4)?,
+            current_status: row.get(5)?,
+            country_code: row.get(6)?,
+            partner_id: row.get(7)?,
+            owner_person_id: row.get(8)?,
+            start_date: row.get(9)?,
+            due_date: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
+            archived_at: row.get(13)?,
             tags,
         });
     }
@@ -268,10 +270,10 @@ pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, App
     let root: ExportRoot = serde_json::from_str(json)
         .map_err(|e| AppError::Validation(format!("Invalid JSON: {}", e)))?;
 
-    // Support both schema version 1 (without comments) and 2 (with comments)
-    if root.schema_version < 1 || root.schema_version > 2 {
+    // Support schema versions 1 (no comments), 2 (comments), 3 (projects.productName)
+    if root.schema_version < 1 || root.schema_version > 3 {
         return Err(AppError::Validation(format!(
-            "Unsupported schema version: {} (expected 1 or 2)",
+            "Unsupported schema version: {} (expected 1..=3)",
             root.schema_version
         )));
     }
@@ -314,9 +316,22 @@ pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, App
     // 3. Import projects
     let mut projects_count = 0usize;
     for p in &root.projects {
+        // Enforce project name uniqueness (case-insensitive) during import.
+        let name_exists: i64 = tx
+            .query_row(
+                "SELECT COUNT(1) FROM projects WHERE name = ?1 COLLATE NOCASE AND id <> ?2",
+                params![p.name, p.id],
+                |r| r.get(0),
+            )
+            .map_err(|e| AppError::Db(e.to_string()))?;
+        if name_exists > 0 {
+            skipped += 1;
+            continue;
+        }
+
         let changed = tx.execute(
-            "INSERT OR IGNORE INTO projects (id, name, description, priority, current_status, country_code, partner_id, owner_person_id, start_date, due_date, created_at, updated_at, archived_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            params![p.id, p.name, p.description, p.priority, p.current_status, p.country_code, p.partner_id, p.owner_person_id, p.start_date, p.due_date, p.created_at, p.updated_at, p.archived_at],
+            "INSERT OR IGNORE INTO projects (id, name, product_name, description, priority, current_status, country_code, partner_id, owner_person_id, start_date, due_date, created_at, updated_at, archived_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![p.id, p.name, p.product_name, p.description, p.priority, p.current_status, p.country_code, p.partner_id, p.owner_person_id, p.start_date, p.due_date, p.created_at, p.updated_at, p.archived_at],
         ).map_err(|e| AppError::Db(e.to_string()))?;
         if changed > 0 {
             projects_count += 1;

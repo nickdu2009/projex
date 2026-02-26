@@ -271,10 +271,10 @@ impl<'a> DeltaSyncEngine<'a> {
     ) -> Result<(), AppError> {
         tx.execute(
             "INSERT OR REPLACE INTO projects (
-                id, name, description, priority, current_status, country_code, 
-                partner_id, owner_person_id, start_date, due_date, 
+                id, name, description, priority, current_status, country_code,
+                partner_id, owner_person_id, product_name, start_date, due_date,
                 created_at, updated_at, archived_at, _version
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 data["id"].as_str(),
                 data["name"].as_str(),
@@ -284,6 +284,7 @@ impl<'a> DeltaSyncEngine<'a> {
                 data["country_code"].as_str(),
                 data["partner_id"].as_str(),
                 data["owner_person_id"].as_str(),
+                data["product_name"].as_str(),
                 data["start_date"].as_str(),
                 data["due_date"].as_str(),
                 data["created_at"].as_str(),

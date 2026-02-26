@@ -22,6 +22,15 @@ function formatDate(d: Date | null): string | undefined {
   return d ? dayjs(d).format('YYYY-MM-DD') : undefined;
 }
 
+function generateProjectName(args: { countryCode: string; partnerName: string; productName: string }): string {
+  const parts = [
+    args.countryCode.trim().toUpperCase(),
+    args.partnerName.trim(),
+    args.productName.trim(),
+  ].filter(Boolean);
+  return parts.join('-');
+}
+
 export function ProjectForm() {
   const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
@@ -30,6 +39,8 @@ export function ProjectForm() {
   const [loading, setLoading] = useState(false);
   const [loadProject, setLoadProject] = useState(true);
   const [name, setName] = useState('');
+  const [nameEdited, setNameEdited] = useState(false);
+  const [productName, setProductName] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState(3);
   const [countryCode, setCountryCode] = useState('CN');
@@ -56,6 +67,8 @@ export function ProjectForm() {
     }
     projectApi.get(id).then((p) => {
       setName(p.name);
+      setNameEdited(true);
+      setProductName(p.product_name ?? '');
       setDescription(p.description ?? '');
       setPriority(p.priority);
       setCountryCode(p.country_code);
@@ -70,6 +83,17 @@ export function ProjectForm() {
       setLoadProject(false);
     });
   }, [id, isEdit, t]);
+
+  useEffect(() => {
+    if (isEdit) return;
+    if (nameEdited) return;
+    if (!partnerId) return;
+    const partnerName = partnerOptions().find((o) => o.value === partnerId)?.label ?? '';
+    if (!partnerName.trim()) return;
+    const nextName = generateProjectName({ countryCode, partnerName, productName });
+    if (!nextName.trim()) return;
+    setName(nextName);
+  }, [countryCode, isEdit, nameEdited, partnerId, partnerOptions, productName]);
 
   const handleSubmit = useCallback(async () => {
     if (!name.trim()) {
@@ -94,6 +118,7 @@ export function ProjectForm() {
         await projectApi.update({
           id,
           name: name.trim(),
+          productName: productName.trim(),
           description: description.trim() || undefined,
           priority,
           countryCode: countryCode.trim(),
@@ -111,6 +136,7 @@ export function ProjectForm() {
           countryCode: countryCode.trim(),
           partnerId: partnerId!,
           ownerPersonId,
+          productName: productName.trim() || undefined,
           description: description.trim() || undefined,
           priority,
           startDate: formatDate(startDate),
@@ -126,7 +152,7 @@ export function ProjectForm() {
     } finally {
       setLoading(false);
     }
-  }, [id, isEdit, name, description, priority, countryCode, partnerId, ownerPersonId, startDate, dueDate, tagsStr, navigate, t, invalidateTags]);
+  }, [id, isEdit, name, productName, description, priority, countryCode, partnerId, ownerPersonId, startDate, dueDate, tagsStr, navigate, t, invalidateTags]);
 
   if (loadProject) return <Text size="sm">{t('common.loading')}</Text>;
 
@@ -139,7 +165,22 @@ export function ProjectForm() {
         <Stack gap="md">
           <Title order={3}>{isEdit ? t('project.form.editTitle') : t('project.form.newTitle')}</Title>
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing="md">
-        <TextInput label={t('project.form.name')} required value={name} onChange={(e) => setName(e.target.value)} placeholder={t('project.form.namePlaceholder')} />
+        <TextInput
+          label={t('project.form.name')}
+          required
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            setNameEdited(true);
+          }}
+          placeholder={t('project.form.namePlaceholder')}
+        />
+        <TextInput
+          label={t('project.form.productName')}
+          value={productName}
+          onChange={(e) => setProductName(e.target.value)}
+          placeholder={t('project.form.productNamePlaceholder')}
+        />
         <TextInput label={t('project.form.description')} value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('common.optional')} />
         <NumberInput label={t('project.form.priority')} min={1} max={5} value={priority} onChange={(v) => setPriority(Number(v) || 3)} />
         <Select

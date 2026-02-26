@@ -44,6 +44,7 @@ fn seed(pool: &app_lib::infra::DbPool) -> TestSeedIds {
             country_code: "US".to_string(),
             partner_id: partner.id.clone(),
             owner_person_id: owner.id.clone(),
+            product_name: None,
             start_date: None,
             due_date: None,
             tags: None,
