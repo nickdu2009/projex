@@ -405,7 +405,7 @@ pub fn project_update(pool: &DbPool, req: ProjectUpdateReq) -> Result<ProjectDet
             .unchecked_transaction()
             .map_err(|e| AppError::Db(e.to_string()))?;
 
-        let (name, desc, priority, country_code, owner_id, product_name, start_date, due_date): (
+        type ProjectUpdateExistingRow = (
             String,
             String,
             i32,
@@ -414,7 +414,9 @@ pub fn project_update(pool: &DbPool, req: ProjectUpdateReq) -> Result<ProjectDet
             Option<String>,
             Option<String>,
             Option<String>,
-        ) = tx
+        );
+
+        let (name, desc, priority, country_code, owner_id, product_name, start_date, due_date): ProjectUpdateExistingRow = tx
             .query_row(
                 "SELECT name, description, priority, country_code, owner_person_id, product_name, start_date, due_date FROM projects WHERE id = ?1",
                 [&req.id],
