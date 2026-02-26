@@ -166,11 +166,11 @@ stateDiagram-v2
 ```mermaid
 flowchart LR
   A[创建项目<br/>必须选择 Partner/Owner/Country] --> B[自动加入 Owner 成为成员]
-  B --> C[写入初始状态历史<br/>null -> BACKLOG]
+  B --> C[写入初始状态历史<br/>null → BACKLOG]
   C --> D{操作}
   D -->|变更状态| E[事务内：写 StatusHistory + 更新 currentStatus]
-  D -->|成员加入| F[创建 Assignment(startAt=now,endAt=null)]
-  D -->|成员退出| G[更新 Assignment(endAt=now)]
+  D -->|成员加入| F[创建 Assignment<br/>startAt=now<br/>endAt=null]
+  D -->|成员退出| G[更新 Assignment<br/>endAt=now]
   D -->|归档/取消归档| H[按状态机变更并写历史]
   E --> D
   F --> D
