@@ -20,7 +20,7 @@
 #   KEYSTORE_OUT    Output path for a newly generated keystore
 #                   (default: <repo-root>/secret/projex-release.jks)
 #   ENV_OUT         Output path for the .env file
-#                   (default: <repo-root>/android-signing.env)
+#                   (default: <repo-root>/secret/android-signing.env)
 #   SKIP_GH         Set to "1" to skip GitHub Secrets upload
 #
 # Examples:
@@ -53,7 +53,7 @@ KEYSTORE_OUT="${KEYSTORE_OUT:-$REPO_ROOT/secret/projex-release.jks}"
 # Ensure the secret directory exists with restricted permissions
 mkdir -p "$REPO_ROOT/secret"
 chmod 700 "$REPO_ROOT/secret"
-ENV_OUT="${ENV_OUT:-$REPO_ROOT/android-signing.env}"
+ENV_OUT="${ENV_OUT:-$REPO_ROOT/secret/android-signing.env}"
 SKIP_GH="${SKIP_GH:-0}"
 KEY_ALIAS="projex"
 
