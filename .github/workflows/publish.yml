@@ -6,8 +6,77 @@ on:
     tags:
       - 'v*'
 
+# Shared release body used by both macOS and Windows build steps.
+env:
+  RELEASE_BODY: |
+    ## What's New
+
+    See the assets below to download and install this version.
+
+    ### Downloads
+    - **macOS (Apple Silicon)**: `.dmg` for M1/M2/M3/M4 Macs
+    - **macOS (Intel)**: `.dmg` for Intel Macs
+    - **Windows**: `.msi` installer or `.exe` setup
+
+    ### Highlights
+    - S3 sync config export/import: export credentials to JSON for quick setup on a new device
+    - Multi-device sync via S3-compatible storage (AWS S3, Cloudflare R2, MinIO, etc.)
+    - Rich-text comments with Tiptap editor (bold, headings, task lists, tables, images)
+    - Full i18n support: English and 中文 with live language switching
+    - Application log viewer with redaction, search, and auto-refresh
+
 jobs:
+  # Run CI checks before publishing to prevent broken releases.
+  pre-publish-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'npm'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc -b --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Rust format check
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Clippy lint
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
   publish-tauri:
+    needs: pre-publish-ci
     permissions:
       contents: write
     strategy:
@@ -65,19 +134,12 @@ jobs:
         if: matrix.platform == 'macos-latest'
         run: |
           IDENTITIES=$(security find-identity -v -p codesigning build.keychain 2>/dev/null || true)
-          if [ -z "$IDENTITIES" ]; then
-            echo "Apple certificate not imported; using ad-hoc signing identity '-'"
-            echo "APPLE_SIGNING_IDENTITY=-" >> $GITHUB_ENV
-            exit 0
-          fi
-          if echo "$IDENTITIES" | grep -q "0 valid identities found"; then
+          if [ -z "$IDENTITIES" ] || echo "$IDENTITIES" | grep -q "0 valid identities found"; then
             echo "No valid code signing identity found; using ad-hoc signing identity '-'"
             echo "APPLE_SIGNING_IDENTITY=-" >> $GITHUB_ENV
             exit 0
           fi
-
-          CERT_INFO=$(echo "$IDENTITIES" | head -n 1)
-          CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
+          CERT_ID=$(echo "$IDENTITIES" | head -n 1 | awk -F'"' '{print $2}')
           echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> $GITHUB_ENV
           echo "Using signing identity: $CERT_ID"
 
@@ -91,45 +153,27 @@ jobs:
 
       - name: Build and release (macOS)
         if: matrix.platform == 'macos-latest'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Default to ad-hoc signing to reduce Gatekeeper "app is damaged" warnings.
-          # If a real signing identity is available, it is resolved via the previous steps.
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
         with:
           tagName: v__VERSION__
           releaseName: 'Projex v__VERSION__'
-          releaseBody: |
-            ## What's New
-
-            See the assets below to download and install Projex v__VERSION__.
-
-            ### Downloads
-            - **macOS (Apple Silicon)**: `.dmg` file for M1/M2/M3 Macs
-            - **macOS (Intel)**: `.dmg` file for Intel Macs
-            - **Windows**: `.msi` installer or `.exe` setup
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
 
       - name: Build and release (Windows)
         if: matrix.platform == 'windows-latest'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
           releaseName: 'Projex v__VERSION__'
-          releaseBody: |
-            ## What's New
-
-            See the assets below to download and install Projex v__VERSION__.
-
-            ### Downloads
-            - **macOS (Apple Silicon)**: `.dmg` file for M1/M2/M3 Macs
-            - **macOS (Intel)**: `.dmg` file for Intel Macs
-            - **Windows**: `.msi` installer or `.exe` setup
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
@@ -140,6 +184,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    # Undraft only on tag push; workflow_dispatch leaves the release as draft
+    # so it can be reviewed before going public.
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Publish release
