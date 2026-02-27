@@ -14,7 +14,7 @@ import {
   Title,
 } from '@mantine/core';
 import { useIsMobile } from '../utils/useIsMobile';
-import { IconDownload, IconUpload, IconCloud, IconCloudUpload, IconRestore, IconEye, IconEyeOff, IconEdit, IconFileText } from '@tabler/icons-react';
+import { IconDownload, IconUpload, IconCloud, IconCloudUpload, IconRestore, IconEye, IconEyeOff, IconEdit, IconFileText, IconDatabaseExport, IconDatabaseImport } from '@tabler/icons-react';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -22,6 +22,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { exportApi } from '../api/export';
+import { syncApi } from '../api/sync';
 import { showError, showSuccess } from '../utils/errorToast';
 import { logger } from '../utils/logger';
 import { syncManager } from '../sync/SyncManager';
@@ -64,6 +65,9 @@ export function Settings() {
   const [snapshotting, setSnapshotting] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<number | null>(null);
+  const [exportingConfig, setExportingConfig] = useState(false);
+  const [importingConfig, setImportingConfig] = useState(false);
+  const syncConfigFileInputRef = useRef<HTMLInputElement>(null);
 
   const getErrorCodeAndMessage = (e: unknown): { code?: string; message: string } => {
     // Tauri invoke errors may come in different shapes across versions:
@@ -284,6 +288,55 @@ export function Settings() {
   const handleCancelSyncConfigEdit = async () => {
     setSyncConfigEditing(false);
     await loadSyncConfig();
+  };
+
+  const handleExportSyncConfig = async () => {
+    setExportingConfig(true);
+    try {
+      const jsonString = await syncApi.exportConfig();
+      const filePath = await save({
+        title: t('settings.sync.exportConfigDialogTitle'),
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        defaultPath: `projex-sync-config-${new Date().toISOString().split('T')[0]}.json`,
+      });
+      if (filePath) {
+        await writeTextFile(filePath, jsonString);
+        showSuccess(t('settings.sync.exportConfigSuccess'));
+      }
+    } catch (e: unknown) {
+      showError((e as { message?: string })?.message ?? t('settings.sync.exportConfigFailed'));
+    } finally {
+      setExportingConfig(false);
+    }
+  };
+
+  const handleImportSyncConfig = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImportingConfig(true);
+    try {
+      const text = await file.text();
+      const updatedConfig = await syncApi.importConfig(text);
+      showSuccess(t('settings.sync.importConfigSuccess'));
+      // Refresh UI state from the returned config.
+      setSyncConfig(updatedConfig);
+      setSyncEnabled(updatedConfig.enabled);
+      setBucket(updatedConfig.bucket || '');
+      setEndpoint(updatedConfig.endpoint || '');
+      setAccessKey(updatedConfig.access_key || '');
+      setAutoSyncIntervalMinutes(Math.max(1, Number(updatedConfig.auto_sync_interval_minutes || 1)));
+      setSecretKey('');
+      setSecretKeySaved(Boolean(updatedConfig.has_secret_key));
+      setSecretKeyMasked(updatedConfig.secret_key_masked || null);
+      setSecretKeyRevealed(false);
+      setSecretKeyEditBaseline(null);
+      setSyncConfigEditing(false);
+    } catch (e: unknown) {
+      showError((e as { message?: string })?.message ?? t('settings.sync.importConfigFailed'));
+    } finally {
+      setImportingConfig(false);
+      if (syncConfigFileInputRef.current) syncConfigFileInputRef.current.value = '';
+    }
   };
 
   const handleToggleSyncEnabled = async (nextEnabled: boolean) => {
@@ -576,6 +629,45 @@ export function Settings() {
               </>
             )}
           </Group>
+
+          <Divider variant="dashed" />
+
+          <div>
+            <Text size="xs" c="dimmed" mb="xs">
+              {t('settings.sync.exportConfigDesc')}
+            </Text>
+            <Group wrap="wrap" gap="xs">
+              <Button
+                leftSection={<IconDatabaseExport size={16} />}
+                variant="light"
+                color="indigo"
+                size="xs"
+                onClick={handleExportSyncConfig}
+                loading={exportingConfig}
+                fullWidth={isMobile}
+              >
+                {t('settings.sync.exportConfig')}
+              </Button>
+              <Button
+                leftSection={<IconDatabaseImport size={16} />}
+                variant="light"
+                color="teal"
+                size="xs"
+                onClick={() => syncConfigFileInputRef.current?.click()}
+                loading={importingConfig}
+                fullWidth={isMobile}
+              >
+                {t('settings.sync.importConfig')}
+              </Button>
+              <input
+                ref={syncConfigFileInputRef}
+                type="file"
+                accept=".json"
+                style={{ display: 'none' }}
+                onChange={handleImportSyncConfig}
+              />
+            </Group>
+          </div>
         </Stack>
       </Paper>
 

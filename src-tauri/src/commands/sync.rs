@@ -1266,6 +1266,158 @@ fn extract_s3_error_code_message(err: &(dyn StdError + 'static)) -> Option<(Stri
     None
 }
 
+/// Export sync configuration (credentials included, device-specific state excluded).
+/// The exported JSON can be imported on another device to quickly set up sync.
+///
+/// 导出内容：bucket / endpoint / access_key / secret_key / auto_sync_interval_minutes
+/// 不导出：device_id / sync_enabled / last_sync / local_version（这些是设备运行时状态）
+#[tauri::command]
+pub fn cmd_sync_export_config(pool: State<DbPool>) -> Result<String, AppError> {
+    let conn = pool
+        .inner()
+        .0
+        .lock()
+        .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+
+    let bucket = get_optional_config_value(&conn, "s3_bucket")?;
+    let endpoint = get_optional_config_value(&conn, "s3_endpoint")?;
+    let access_key = get_optional_config_value(&conn, "s3_access_key")?;
+    let secret_key = get_optional_config_value(&conn, "s3_secret_key")?;
+    let auto_sync_interval_minutes = get_config_value(&conn, "auto_sync_interval_minutes")
+        .ok()
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .filter(|v| *v >= 1)
+        .unwrap_or(1);
+
+    let exported_at = chrono::Utc::now().to_rfc3339();
+
+    let payload = serde_json::json!({
+        "version": 1,
+        "exported_at": exported_at,
+        "sync_config": {
+            "bucket": bucket.unwrap_or_default(),
+            "endpoint": endpoint.unwrap_or_default(),
+            "access_key": access_key.unwrap_or_default(),
+            "secret_key": secret_key.unwrap_or_default(),
+            "auto_sync_interval_minutes": auto_sync_interval_minutes,
+        }
+    });
+
+    serde_json::to_string_pretty(&payload)
+        .map_err(|e| AppError::Validation(format!("Failed to serialize config: {}", e)))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SyncImportConfigReq {
+    pub json: String,
+}
+
+/// Import sync configuration from a previously exported JSON file.
+/// Only overwrites non-empty values; sync_enabled and device_id are never touched.
+///
+/// 导入逻辑：
+/// - 仅覆盖非空字段（空字符串不覆盖已有值）
+/// - 不修改 sync_enabled / device_id / last_sync / local_version
+/// - 导入后不自动启用同步，由用户手动开启
+#[tauri::command]
+pub async fn cmd_sync_import_config(
+    pool: State<'_, DbPool>,
+    runtime: State<'_, SyncRuntime>,
+    req: SyncImportConfigReq,
+) -> Result<SyncConfigResp, AppError> {
+    let parsed: serde_json::Value = serde_json::from_str(&req.json)
+        .map_err(|e| AppError::Validation(format!("INVALID_JSON: {}", e)))?;
+
+    let version = parsed
+        .get("version")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    if version != 1 {
+        return Err(AppError::Validation(format!(
+            "UNSUPPORTED_VERSION: expected version 1, got {}",
+            version
+        )));
+    }
+
+    let cfg = parsed
+        .get("sync_config")
+        .ok_or_else(|| AppError::Validation("MISSING_FIELD: sync_config".to_string()))?;
+
+    {
+        let conn = pool
+            .inner()
+            .0
+            .lock()
+            .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+
+        if let Some(bucket) = cfg.get("bucket").and_then(|v| v.as_str()).filter(|v| !v.trim().is_empty()) {
+            set_config_value(&conn, "s3_bucket", bucket.trim())?;
+        }
+        if let Some(endpoint) = cfg.get("endpoint").and_then(|v| v.as_str()).filter(|v| !v.trim().is_empty()) {
+            #[cfg(target_os = "android")]
+            validate_endpoint_https(&Some(endpoint.trim().to_string()))?;
+            set_config_value(&conn, "s3_endpoint", endpoint.trim())?;
+        }
+        if let Some(access_key) = cfg.get("access_key").and_then(|v| v.as_str()).filter(|v| !v.trim().is_empty()) {
+            set_config_value(&conn, "s3_access_key", access_key.trim())?;
+        }
+        if let Some(secret_key) = cfg.get("secret_key").and_then(|v| v.as_str()).filter(|v| !v.trim().is_empty()) {
+            set_config_value(&conn, "s3_secret_key", secret_key.trim())?;
+        }
+        if let Some(interval) = cfg
+            .get("auto_sync_interval_minutes")
+            .and_then(|v| v.as_i64())
+            .filter(|v| *v >= 1)
+        {
+            set_config_value(&conn, "auto_sync_interval_minutes", &interval.to_string())?;
+        }
+    }
+
+    // Refresh scheduler in case interval changed (sync_enabled state unchanged).
+    runtime.refresh_scheduler(pool.inner().clone()).await;
+
+    // Return updated config so the frontend can refresh its state.
+    let conn = pool
+        .inner()
+        .0
+        .lock()
+        .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+
+    let device_id = get_config_value(&conn, "device_id")?;
+    let enabled = get_config_value(&conn, "sync_enabled")? == "1";
+    let bucket = get_config_value(&conn, "s3_bucket").ok();
+    let endpoint = get_config_value(&conn, "s3_endpoint").ok();
+    let access_key = get_config_value(&conn, "s3_access_key").ok();
+    let secret_key = get_config_value(&conn, "s3_secret_key").ok();
+    let has_secret_key = secret_key
+        .as_deref()
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let secret_key_masked = secret_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(mask_credential);
+    let last_sync = get_config_value(&conn, "last_sync").ok();
+    let auto_sync_interval_minutes = get_config_value(&conn, "auto_sync_interval_minutes")
+        .ok()
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .filter(|v| *v >= 1)
+        .unwrap_or(1);
+
+    Ok(SyncConfigResp {
+        enabled,
+        bucket,
+        endpoint,
+        access_key,
+        has_secret_key,
+        secret_key_masked,
+        device_id,
+        last_sync,
+        auto_sync_interval_minutes,
+    })
+}
+
 fn mask_credential(value: &str) -> String {
     // Common UX: show prefix + "***" + suffix, without revealing the full secret.
     // Keys are ASCII in practice; bytes-based masking is fine here.

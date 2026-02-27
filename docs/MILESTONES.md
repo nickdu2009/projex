@@ -393,6 +393,17 @@ flowchart LR
 
 ### 详细需求内容
 
+#### 7.0 同步配置导入导出（已完成）✅
+
+> 目标：支持将 S3 凭据导出为 JSON 文件，便于在新设备上快速完成同步配置。
+
+- [x] **后端**：`cmd_sync_export_config` — 读取 `sync_config` 表，生成带版本号的 JSON（含 `bucket`/`endpoint`/`access_key`/`secret_key`/`auto_sync_interval_minutes`，不含 `device_id`/`sync_enabled` 等运行时状态）
+- [x] **后端**：`cmd_sync_import_config` — 解析 JSON，校验 `version === 1`，仅覆盖非空字段，不修改 `sync_enabled`/`device_id`，Android 强制 HTTPS 校验，导入后刷新调度器，返回最新 `SyncConfigDto`
+- [x] **前端**：`src/api/sync.ts` 新增 `exportConfig()` / `importConfig()` 封装
+- [x] **前端**：`Settings.tsx` 同步配置区块底部新增"导出同步配置"/"导入同步配置"按钮
+- [x] **i18n**：`en.json` / `zh.json` 新增 11 个翻译 key（`settings.sync.exportConfig` 等）
+- [x] **安全**：导出文件包含明文 Secret Key，UI 提示用户妥善保管
+
 #### 7.1 安全增强（P1）
 - [ ] 可选 E2E 加密（对象体加密 + 本地密钥管理）
 - [ ] 凭据治理增强（最小暴露面、轮换策略）

@@ -308,6 +308,8 @@ pub fn run() {
             commands::sync::cmd_sync_full,
             commands::sync::cmd_sync_create_snapshot,
             commands::sync::cmd_sync_restore_snapshot,
+            commands::sync::cmd_sync_export_config,
+            commands::sync::cmd_sync_import_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

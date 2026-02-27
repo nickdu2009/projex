@@ -112,6 +112,88 @@ project-management/
 - 迁移失败必须回滚并阻止继续运行（避免半迁移损坏）
 - 当前迁移文件：`0001_init.sql`、`0002_add_person_email_role.sql`、`0003_add_sync_support.sql`、`0004_add_project_comments.sql`
 
+## 需求研发流程
+
+### 总览
+
+```mermaid
+flowchart LR
+  A[💡 需求提出] --> B[📄 更新 PRD]
+  B --> C[🏗️ 技术设计]
+  C --> D[💻 编码实现]
+  D --> E[✅ 测试验证]
+  E --> F[🔍 自检 & Lint]
+  F --> G[📦 提交 Commit]
+  G --> H[🏁 更新里程碑]
+```
+
+### 各阶段说明
+
+#### 1. 需求提出
+- 明确功能目标、影响范围（字段 / 状态机 / 命令契约 / UI）
+- 评估是否涉及**破坏性变更**（影响已有数据或 API）
+- 若涉及新表/字段，确认是否需要 migration
+
+#### 2. 更新 PRD（必须先于编码）
+- 修改 `docs/PRD.md` 对应章节（数据模型、命令契约、状态机等）
+- 若有里程碑关联，在 `docs/MILESTONES.md` 中记录任务项
+- **禁止跳过此步骤直接编码**
+
+#### 3. 技术设计
+- 复杂功能需先画 Mermaid 流程图 / 状态机图
+- 明确分层职责：Domain → UseCase → Command → UI
+- 识别边界：事务边界、并发风险、错误码设计
+- 若涉及 S3 同步，参考 `docs/SYNC_S3_DESIGN.md`
+
+#### 4. 编码实现（分层顺序）
+```
+Domain（纯规则）
+  → Infra（SQLite Repo + Migration）
+    → UseCase（事务编排）
+      → Command（DTO 映射）
+        → Frontend API（typed invoke）
+          → UI 组件（React + Mantine）
+```
+- 新增表/字段必须提供 migration 文件（`src-tauri/migrations/`）
+- 新增 UI 字符串必须同时更新 `en.json` 和 `zh.json`
+- 日志使用 `logger.*`，禁止直接使用 `console.*`
+
+#### 5. 测试验证
+- **Rust 单元/集成测试**：`cd src-tauri && cargo test`
+- 新增业务逻辑必须覆盖核心路径（正常 + 边界 + 错误）
+- 手动验收：在 `cargo tauri dev` 中走完完整用户路径
+
+#### 6. 自检 & Lint（提交前必须全部通过）
+```bash
+cd src-tauri && cargo fmt          # 格式化
+cd src-tauri && cargo clippy --all-targets --all-features  # 零 warning
+cd src-tauri && cargo test         # 全量测试
+npm run lint                       # 前端零 error
+npm run build                      # 确认编译通过
+```
+
+#### 7. 提交 Commit
+- 遵循 Conventional Commits 格式（见「Git Commit 规范」章节）
+- 一个 commit 只做一件事，禁止混合不相关变更
+- 若有破坏性变更，在 footer 添加 `BREAKING CHANGE:`
+
+#### 8. 更新里程碑
+- 在 `docs/MILESTONES.md` 将对应任务标记为完成（`[x]`）
+- 若引入新的后续任务，同步添加到里程碑
+
+### 快速检查清单
+
+| 检查项 | 说明 |
+|--------|------|
+| PRD 已更新 | 字段/命令/状态机变更必须先改 PRD |
+| Migration 已提供 | 新增表/字段必须有 migration 文件 |
+| i18n 已覆盖 | 新增 UI 文字同步更新 en.json + zh.json |
+| 测试已通过 | `cargo test` + `npm run lint` + `npm run build` |
+| Commit 规范 | 英文、Conventional Commits、单一职责 |
+| 里程碑已更新 | MILESTONES.md 对应任务已标记 |
+
+---
+
 ## 开发运行（约定命令）
 - **安装依赖**：
   - `npm install`
@@ -292,14 +374,21 @@ from "export_json" to "export_json_string"
 - **Vector Clock**：每个设备维护独立向量时钟，用于因果排序与冲突检测（LWW 策略）
 - **Snapshot**：全量快照备份/恢复，含 gzip 压缩与 SHA-256 checksum 校验
 - **S3 Client**：兼容 AWS S3 / Cloudflare R2 / MinIO，支持自定义 endpoint
+- **配置导入导出**：`cmd_sync_export_config` / `cmd_sync_import_config`，支持将 S3 凭据导出为 JSON 文件，在新设备上快速完成同步配置
 
 ### 关键文件
 - `src-tauri/src/sync/` — Rust 同步核心（delta_sync.rs, snapshot.rs, vector_clock.rs, s3_client.rs）
 - `src-tauri/migrations/0003_add_sync_support.sql` — 同步相关表与触发器
 - `src/sync/SyncManager.ts` — 前端同步状态管理（单例模式）
 - `src/components/SyncStatusBar.tsx` — 同步状态展示组件
-- `docs/SYNC_S3_DESIGN.md` — 详细设计文档
+- `docs/SYNC_S3_DESIGN.md` — 详细设计文档（含第 12 节：配置导入导出设计）
 - `docs/SYNC_EXPLAINED.md` — 同步机制中文说明
+
+### 配置导入导出约定
+- **导出格式**：`{ version: 1, exported_at, sync_config: { bucket, endpoint, access_key, secret_key, auto_sync_interval_minutes } }`
+- **不导出**：`device_id`、`sync_enabled`、`last_sync`、`local_version`（设备运行时状态）
+- **导入规则**：空字符串不覆盖已有值；`sync_enabled` 不被修改；Android 强制 HTTPS 校验
+- **版本校验**：仅支持 `version === 1`，否则返回 `UNSUPPORTED_VERSION`
 
 ## 数据导入/导出
 - **导出**：`export_json_string` — 全量导出为 JSON（含 schemaVersion = 2）
