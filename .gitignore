@@ -46,3 +46,9 @@ Thumbs.db
 # Local MinIO dev data / env
 .env.minio
 .local/minio/
+
+# Android signing secrets (NEVER commit these)
+secret/
+*.jks
+*.keystore
+android-signing.env
