@@ -3,15 +3,16 @@
 本文件用于约束后续自动化/AI 代理在本仓库中的工作方式，确保实现与 `docs/PRD.md` 一致、可维护、可扩展。
 
 ## 项目定位
-- **产品**：Projex — 个人项目管理工具（Mac 本地 + S3 多设备同步）
+- **产品**：Projex — 个人项目管理工具（Mac 本地 + Android + S3 多设备同步）
 - **核心能力**：项目状态机 + 状态时间线（不可变事件日志）、成员视图（做过/当前）、Partner（1:N，项目必须有且创建后不可变更）、Country、S3 同步
 - **权威需求来源**：`docs/PRD.md`（任何行为/字段/约束变更必须先改 PRD）
 
 ## 技术栈（拍板）
 - **Desktop**：Tauri（Rust）
+- **Mobile**：Tauri Android（Rust + Kotlin，`src-tauri/gen/android`）
 - **Frontend**：React + TypeScript
 - **Build**：Vite
-- **UI**：Mantine
+- **UI**：Mantine（含移动端响应式适配）
 - **RichText**：Tiptap + @mantine/tiptap（富文本编辑器）
 - **Validation**：zod（前端 DTO/表单输入预校验）
 - **i18n**：i18next + react-i18next（English / 中文）
@@ -20,6 +21,7 @@
 - **Rust DB**：rusqlite（同步 API，事务清晰）
 - **Rust**：serde/serde_json、thiserror、uuid、chrono
 - **Sync**：aws-sdk-s3、aws-config、sha2、flate2（S3 多设备同步）
+- **Android 后台同步**：WorkManager（PeriodicWork，≥15 分钟）+ JNI（`jni` crate）
 - **Logging**：tauri-plugin-log（Rust 侧）+ `@tauri-apps/plugin-log`（前端 JS 绑定）+ 自研 logger 抽象层
 
 ## 总体架构（Clean Architecture）
@@ -42,14 +44,16 @@ project-management/
     SYNC_S3_DESIGN.md        # S3 同步架构设计
     SYNC_EXPLAINED.md        # 同步机制详解
     LOGS_VIEWER.md           # 日志查看功能说明
+    ANDROID_SUPPORT.md       # Android 支持技术设计（后台同步 + 移动端 UI 适配）
+    ANDROID_DEV_SETUP.md     # Android 开发环境搭建指南
   src/                       # Vite React frontend
     api/                     # typed invoke wrappers (projects/partners/people/export/sync/assignments/logs)
-    components/              # 共享组件 (ConfirmModal, EmptyState, SyncStatusBar)
+    components/              # 共享组件 (ConfirmModal, EmptyState, SyncStatusBar, MobilePageHeader, MobileBottomSheet)
     constants/               # 常量 (countries, PROJECT_STATUSES)
     pages/                   # 页面组件 (Layout, ProjectsList, ProjectDetail, ProjectForm, Logs, ...)
     stores/                  # zustand stores (usePartnerStore, usePersonStore, useTagStore)
     sync/                    # 前端同步管理 (SyncManager)
-    utils/                   # 工具函数 (errorToast, statusColor, roleLabel, logger)
+    utils/                   # 工具函数 (errorToast, statusColor, roleLabel, logger, useIsMobile, responsive)
     i18n.ts                  # i18next 初始化（默认 en，fallback en）
     locales/                 # 翻译文件 (en.json, zh.json)
     theme.ts                 # Mantine 主题配置
@@ -62,8 +66,17 @@ project-management/
       domain/                # entities + status machine + invariants
       infra/                 # sqlite impl + migrations
       sync/                  # S3 同步 (delta_sync, snapshot, vector_clock, s3_client)
+      android_jni.rs         # Android JNI 桥接（仅 target_os = "android"）
       error.rs               # AppError 统一错误模型（含 LogFile/LogIo 错误类型）
       lib.rs / main.rs
+    gen/android/             # Tauri 生成的 Android 工程（勿手动删除）
+      app/src/main/java/com/nickdu/projex/
+        MainActivity.kt      # 主 Activity，启动时 schedule WorkManager
+        SyncWorker.kt        # WorkManager CoroutineWorker，调用 JNI
+        SyncScheduler.kt     # 调度封装（enqueueUniquePeriodicWork）
+        BootReceiver.kt      # 重启恢复（BOOT_COMPLETED）
+      app/src/main/AndroidManifest.xml  # 权限 + BootReceiver 声明
+      app/build.gradle.kts   # 依赖（work-runtime-ktx 等）
 ```
 
 ## 关键业务不变量（必须在 Rust 侧强制）
@@ -121,6 +134,63 @@ project-management/
   - **前端（ESLint）**：`npm run lint`
     - 必须零 error 通过
   - **提交前必须**：同时通过 rustfmt + Clippy + ESLint + 全量测试
+
+## Android 开发（约定命令）
+
+> 详细环境搭建见 `docs/ANDROID_DEV_SETUP.md`
+
+- **环境变量（必须）**：
+  ```bash
+  export ANDROID_HOME="$HOME/Library/Android/sdk"
+  export NDK_HOME="$ANDROID_HOME/ndk/29.0.14206865"
+  export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+  ```
+- **启动模拟器**（首次需先在 Android Studio 创建 AVD）：
+  - `emulator -avd Medium_Phone_API_36.1`（GUI 模式）
+- **Android 开发模式**（需先启动模拟器）：
+  - `npm run tauri -- android dev`
+  - 或：`unset CI && cargo tauri android dev`
+- **Android 构建**：
+  - `cargo tauri android build`
+- **Android 交叉编译检查**：
+  - `cargo ndk -t arm64-v8a check`（需安装 `cargo-ndk`）
+- **查看 app 日志**：
+  - `adb logcat -s "ProjexSyncWorker" "Tauri/Console" "chromium"`
+- **推送文件到模拟器**：
+  - `adb push <本地文件> /sdcard/Download/<文件名>`
+- **端口转发（Vite HMR）**：由 `tauri android dev` 自动执行 `adb forward tcp:5173 tcp:5173`
+
+## Android 代码规范
+
+### Kotlin 文件位置
+所有 Android 原生 Kotlin 代码位于：
+`src-tauri/gen/android/app/src/main/java/com/nickdu/projex/`
+
+> **注意**：`gen/android` 目录由 `tauri android init` 生成，但其中的业务文件（`SyncWorker.kt` 等）需要手动维护，不会被重新生成覆盖。
+
+### JNI 函数命名规范
+JNI 函数名必须与 Kotlin 类路径完全对应：
+```rust
+// Kotlin: com.nickdu.projex.SyncWorker.nativeRunSyncOnce()
+pub extern "C" fn Java_com_nickdu_projex_SyncWorker_nativeRunSyncOnce(...)
+```
+
+### Android 平台条件编译
+Android 专用 Rust 代码必须使用条件编译：
+```rust
+#[cfg(target_os = "android")]
+pub mod android_jni;
+
+#[cfg(target_os = "android")]
+validate_endpoint_https(&endpoint)?;
+```
+
+### 移动端 UI 规范
+- 使用 `useIsMobile()` hook 判断是否为移动端（`< 768px`）
+- 列表页必须实现 card-first 双视图（桌面 Table，移动端 Card Stack）
+- 筛选面板在移动端改为 `MobileBottomSheet`
+- 表单提交按钮在移动端使用 `fullWidth={isMobile}`
+- 不得在组件中硬编码断点数值，统一使用 `src/utils/responsive.ts` 中的常量
 
 ## 代码风格与工程规范
 - **命名**：
