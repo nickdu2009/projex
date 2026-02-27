@@ -19,6 +19,7 @@ import { IconPhoto, IconTable } from '@tabler/icons-react';
 import { ActionIcon, FileButton, Tooltip } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useMemo, useRef } from 'react';
+import { useIsMobile } from '../utils/useIsMobile';
 import { createMentionSuggestion, type MentionItem } from './mentionSuggestion';
 import { SlashCommand, createSlashSuggestion } from './slashCommand';
 
@@ -39,6 +40,7 @@ export function RichTextEditor({
   mentionItems = [],
 }: RichTextEditorProps) {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
 
   // Keep a mutable ref so the suggestion callback always reads fresh data,
   // even though useEditor captures extensions only on mount.
@@ -125,42 +127,34 @@ export function RichTextEditor({
 
   return (
     <MantineRTE editor={editor}>
-      <MantineRTE.Toolbar>
-        {/* Text Formatting */}
+      <MantineRTE.Toolbar style={{ flexWrap: 'wrap' }}>
+        {/* Core formatting – always shown */}
         <MantineRTE.ControlsGroup>
           <MantineRTE.Bold />
           <MantineRTE.Italic />
           <MantineRTE.Underline />
-          <MantineRTE.Strikethrough />
-          <MantineRTE.Highlight />
-          <MantineRTE.Code />
-          <MantineRTE.ClearFormatting />
+          {!isMobile && <MantineRTE.Strikethrough />}
+          {!isMobile && <MantineRTE.Highlight />}
+          {!isMobile && <MantineRTE.Code />}
+          {!isMobile && <MantineRTE.ClearFormatting />}
         </MantineRTE.ControlsGroup>
 
         {/* Headings */}
         <MantineRTE.ControlsGroup>
           <MantineRTE.H1 />
           <MantineRTE.H2 />
-          <MantineRTE.H3 />
-          <MantineRTE.H4 />
+          {!isMobile && <MantineRTE.H3 />}
+          {!isMobile && <MantineRTE.H4 />}
         </MantineRTE.ControlsGroup>
 
-        {/* Block Elements */}
+        {/* Lists & blocks */}
         <MantineRTE.ControlsGroup>
-          <MantineRTE.Blockquote />
-          <MantineRTE.Hr />
           <MantineRTE.BulletList />
           <MantineRTE.OrderedList />
           <MantineRTE.TaskList />
-          <MantineRTE.CodeBlock />
-        </MantineRTE.ControlsGroup>
-
-        {/* Text Alignment */}
-        <MantineRTE.ControlsGroup>
-          <MantineRTE.AlignLeft />
-          <MantineRTE.AlignCenter />
-          <MantineRTE.AlignRight />
-          <MantineRTE.AlignJustify />
+          {!isMobile && <MantineRTE.Blockquote />}
+          {!isMobile && <MantineRTE.Hr />}
+          {!isMobile && <MantineRTE.CodeBlock />}
         </MantineRTE.ControlsGroup>
 
         {/* Links */}
@@ -168,6 +162,16 @@ export function RichTextEditor({
           <MantineRTE.Link />
           <MantineRTE.Unlink />
         </MantineRTE.ControlsGroup>
+
+        {/* Alignment – hide on mobile to save space */}
+        {!isMobile && (
+          <MantineRTE.ControlsGroup>
+            <MantineRTE.AlignLeft />
+            <MantineRTE.AlignCenter />
+            <MantineRTE.AlignRight />
+            <MantineRTE.AlignJustify />
+          </MantineRTE.ControlsGroup>
+        )}
 
         {/* Insert: Image + Table */}
         <MantineRTE.ControlsGroup>
@@ -181,23 +185,19 @@ export function RichTextEditor({
             )}
           </FileButton>
 
-          <Tooltip label={t('comment.insertTable')} withArrow>
-            <ActionIcon
-              variant="default"
-              size={26}
-              onClick={() =>
-                editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-              }
-            >
-              <IconTable size={16} stroke={1.5} />
-            </ActionIcon>
-          </Tooltip>
-        </MantineRTE.ControlsGroup>
-
-        {/* Super/Subscript */}
-        <MantineRTE.ControlsGroup>
-          <MantineRTE.Superscript />
-          <MantineRTE.Subscript />
+          {!isMobile && (
+            <Tooltip label={t('comment.insertTable')} withArrow>
+              <ActionIcon
+                variant="default"
+                size={26}
+                onClick={() =>
+                  editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+                }
+              >
+                <IconTable size={16} stroke={1.5} />
+              </ActionIcon>
+            </Tooltip>
+          )}
         </MantineRTE.ControlsGroup>
 
         {/* Undo/Redo */}

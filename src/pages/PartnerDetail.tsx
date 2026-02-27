@@ -1,8 +1,9 @@
-import { Badge, Button, Flex, Loader, Paper, Stack, Table, Text, Title } from '@mantine/core';
+import { Badge, Button, Card, Flex, Group, Loader, Paper, Stack, Table, Text, Title } from '@mantine/core';
 import { IconArrowLeft, IconEdit } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useIsMobile } from '../utils/useIsMobile';
 import { partnersApi, type PartnerDto, type PartnerProjectItem } from '../api/partners';
 import { showError, showSuccess } from '../utils/errorToast';
 import { getProjectStatusColor, getStatusLabel } from '../utils/statusColor';
@@ -12,6 +13,7 @@ export function PartnerDetail() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [partner, setPartner] = useState<PartnerDto | null>(null);
   const [projects, setProjects] = useState<PartnerProjectItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +65,7 @@ export function PartnerDetail() {
         <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/partners')}>
           {t('common.backToList')}
         </Button>
-        <Flex gap="xs">
+        <Group gap="xs" wrap="wrap">
           <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => navigate(`/partners/${id}/edit`)}>
             {t('common.edit')}
           </Button>
@@ -72,7 +74,7 @@ export function PartnerDetail() {
               {t('common.deactivate')}
             </Button>
           )}
-        </Flex>
+        </Group>
       </Flex>
 
       <Paper
@@ -101,6 +103,17 @@ export function PartnerDetail() {
         <Title order={5} mb="xs">{t('partner.detail.projects')}</Title>
         {projects.length === 0 ? (
           <Text size="sm" c="dimmed">{t('common.none')}</Text>
+        ) : isMobile ? (
+          <Stack gap="xs">
+            {projects.map((proj) => (
+              <Card key={proj.id} padding="xs" radius="sm" withBorder style={{ cursor: 'pointer' }} onClick={() => navigate(`/projects/${proj.id}`)}>
+                <Group justify="space-between" wrap="nowrap" gap="xs">
+                  <Text size="sm" fw={500} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.name}</Text>
+                  <Badge size="xs" color={getProjectStatusColor(proj.current_status)} style={{ flexShrink: 0 }}>{getStatusLabel(proj.current_status, t)}</Badge>
+                </Group>
+              </Card>
+            ))}
+          </Stack>
         ) : (
           <Table.ScrollContainer minWidth={300}>
             <Table>

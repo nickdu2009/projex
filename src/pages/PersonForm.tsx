@@ -1,4 +1,5 @@
 import { Button, Paper, Select, SimpleGrid, Stack, Text, TextInput, Textarea, Title } from '@mantine/core';
+import { useIsMobile } from '../utils/useIsMobile';
 import { IconArrowLeft, IconDeviceFloppy } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -12,6 +13,7 @@ export function PersonForm() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const isEdit = id && id !== 'new';
   const [loading, setLoading] = useState(false);
   const [loadPerson, setLoadPerson] = useState(true);
@@ -80,7 +82,7 @@ export function PersonForm() {
   if (loadPerson) return <Text size="sm">{t('common.loading')}</Text>;
 
   return (
-    <Stack gap="md" w="100%" maw={640} pb="xl" style={{ alignSelf: 'flex-start' }}>
+    <Stack gap="md" w="100%" maw={isMobile ? '100%' : 640} pb="xl" style={{ alignSelf: 'flex-start' }}>
       <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/people')}>
         {t('common.backToList')}
       </Button>
@@ -107,7 +109,8 @@ export function PersonForm() {
             variant="gradient"
             gradient={{ from: 'indigo', to: 'violet' }}
             leftSection={<IconDeviceFloppy size={18} />}
-            style={{ alignSelf: 'flex-start' }}
+            fullWidth={isMobile}
+            style={isMobile ? undefined : { alignSelf: 'flex-start' }}
           >
             {isEdit ? t('common.save') : t('common.create')}
           </Button>

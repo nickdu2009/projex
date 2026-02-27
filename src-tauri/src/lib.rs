@@ -1,3 +1,5 @@
+#[cfg(target_os = "android")]
+pub mod android_jni;
 pub mod app;
 mod commands;
 pub mod domain;
@@ -251,6 +253,10 @@ pub fn run() {
             })?;
             app.manage(pool.clone());
 
+            // Register pool for Android background Worker (JNI path).
+            #[cfg(target_os = "android")]
+            crate::android_jni::register_pool(pool.clone());
+
             // Backend auto-sync scheduler (timer lives in Rust).
             let runtime = SyncRuntime::new();
             app.manage(runtime.clone());
@@ -302,6 +308,8 @@ pub fn run() {
             commands::sync::cmd_sync_full,
             commands::sync::cmd_sync_create_snapshot,
             commands::sync::cmd_sync_restore_snapshot,
+            commands::sync::cmd_sync_export_config,
+            commands::sync::cmd_sync_import_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

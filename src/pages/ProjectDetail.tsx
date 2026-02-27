@@ -1,7 +1,9 @@
 import {
   Badge,
   Button,
+  Card,
   Flex,
+  Group,
   Loader,
   Modal,
   Paper,
@@ -17,6 +19,7 @@ import { IconArrowLeft, IconEdit, IconPlus } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useIsMobile } from '../utils/useIsMobile';
 import { assignmentApi } from '../api/assignments';
 import { peopleApi } from '../api/people';
 import { projectApi, type ProjectDetail as ProjectDetailType } from '../api/projects';
@@ -42,6 +45,7 @@ export function ProjectDetail() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [project, setProject] = useState<ProjectDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusModal, setStatusModal] = useState<{ to: string; note: string } | null>(null);
@@ -153,9 +157,11 @@ export function ProjectDetail() {
         <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/projects')}>
           {t('common.backToList')}
         </Button>
-        <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => navigate(`/projects/${id}/edit`)}>
-          {t('common.edit')}
-        </Button>
+        <Group gap="xs" wrap="wrap">
+          <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => navigate(`/projects/${id}/edit`)}>
+            {t('common.edit')}
+          </Button>
+        </Group>
       </Flex>
 
       <Paper
@@ -234,68 +240,100 @@ export function ProjectDetail() {
             />
             <Button size="xs" leftSection={<IconPlus size={14} />} onClick={handleAddMember} disabled={!addPersonId}>{t('project.detail.addMember')}</Button>
           </Flex>
-          <Table.ScrollContainer minWidth={400}>
-          <Table>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t('project.detail.colName')}</Table.Th>
-                <Table.Th>{t('project.detail.colRole')}</Table.Th>
-                <Table.Th>{t('project.detail.colStart')}</Table.Th>
-                <Table.Th>{t('project.detail.colEnd')}</Table.Th>
-                <Table.Th>{t('project.detail.colActions')}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
+          {isMobile ? (
+            <Stack gap="xs">
               {project.assignments.map((a) => (
-                <Table.Tr key={a.id}>
-                  <Table.Td>{a.person_name}</Table.Td>
-                  <Table.Td>{a.role}</Table.Td>
-                  <Table.Td>{a.start_at}</Table.Td>
-                  <Table.Td>{a.end_at ?? '—'}</Table.Td>
-                  <Table.Td>
+                <Card key={a.id} padding="xs" radius="sm" withBorder>
+                  <Group justify="space-between" wrap="nowrap" gap="xs">
+                    <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
+                      <Text size="sm" fw={500}>{a.person_name}</Text>
+                      <Text size="xs" c="dimmed">{a.role} · {a.start_at}{a.end_at ? ` → ${a.end_at}` : ''}</Text>
+                    </Stack>
                     {!a.end_at && (
-                      <Button
-                        size="xs"
-                        color="red"
-                        variant="light"
-                        onClick={() => handleEndMember(a.person_id)}
-                      >
+                      <Button size="xs" color="red" variant="light" style={{ flexShrink: 0 }} onClick={() => handleEndMember(a.person_id)}>
                         {t('project.detail.removeMember')}
                       </Button>
                     )}
-                  </Table.Td>
-                </Table.Tr>
+                  </Group>
+                </Card>
               ))}
-            </Table.Tbody>
-          </Table>
-          </Table.ScrollContainer>
+            </Stack>
+          ) : (
+            <Table.ScrollContainer minWidth={400}>
+              <Table>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t('project.detail.colName')}</Table.Th>
+                    <Table.Th>{t('project.detail.colRole')}</Table.Th>
+                    <Table.Th>{t('project.detail.colStart')}</Table.Th>
+                    <Table.Th>{t('project.detail.colEnd')}</Table.Th>
+                    <Table.Th>{t('project.detail.colActions')}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {project.assignments.map((a) => (
+                    <Table.Tr key={a.id}>
+                      <Table.Td>{a.person_name}</Table.Td>
+                      <Table.Td>{a.role}</Table.Td>
+                      <Table.Td>{a.start_at}</Table.Td>
+                      <Table.Td>{a.end_at ?? '—'}</Table.Td>
+                      <Table.Td>
+                        {!a.end_at && (
+                          <Button size="xs" color="red" variant="light" onClick={() => handleEndMember(a.person_id)}>
+                            {t('project.detail.removeMember')}
+                          </Button>
+                        )}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
         </Stack>
       </Paper>
 
       <Paper>
         <Title order={5} mb="xs">{t('project.detail.statusTimeline')}</Title>
-        <Table.ScrollContainer minWidth={500}>
-        <Table>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t('project.detail.colTime')}</Table.Th>
-              <Table.Th>{t('project.detail.colChange')}</Table.Th>
-              <Table.Th>{t('project.detail.colChangedBy')}</Table.Th>
-              <Table.Th>{t('project.detail.colNote')}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
+        {isMobile ? (
+          <Stack gap="xs">
             {project.status_history.map((h) => (
-              <Table.Tr key={h.id}>
-                <Table.Td>{h.changed_at}</Table.Td>
-                <Table.Td>{h.from_status ? getStatusLabel(h.from_status, t) : '—'} → {getStatusLabel(h.to_status, t)}</Table.Td>
-                <Table.Td>{h.changed_by_name ?? '—'}</Table.Td>
-                <Table.Td>{h.note || '—'}</Table.Td>
-              </Table.Tr>
+              <Card key={h.id} padding="xs" radius="sm" withBorder>
+                <Stack gap={2}>
+                  <Text size="xs" c="dimmed">{h.changed_at}</Text>
+                  <Text size="sm">
+                    {h.from_status ? getStatusLabel(h.from_status, t) : '—'} → {getStatusLabel(h.to_status, t)}
+                  </Text>
+                  {h.changed_by_name && <Text size="xs" c="dimmed">{h.changed_by_name}</Text>}
+                  {h.note && <Text size="xs" c="dimmed">{h.note}</Text>}
+                </Stack>
+              </Card>
             ))}
-          </Table.Tbody>
-        </Table>
-        </Table.ScrollContainer>
+          </Stack>
+        ) : (
+          <Table.ScrollContainer minWidth={500}>
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t('project.detail.colTime')}</Table.Th>
+                  <Table.Th>{t('project.detail.colChange')}</Table.Th>
+                  <Table.Th>{t('project.detail.colChangedBy')}</Table.Th>
+                  <Table.Th>{t('project.detail.colNote')}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {project.status_history.map((h) => (
+                  <Table.Tr key={h.id}>
+                    <Table.Td>{h.changed_at}</Table.Td>
+                    <Table.Td>{h.from_status ? getStatusLabel(h.from_status, t) : '—'} → {getStatusLabel(h.to_status, t)}</Table.Td>
+                    <Table.Td>{h.changed_by_name ?? '—'}</Table.Td>
+                    <Table.Td>{h.note || '—'}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
       </Paper>
 
       <ProjectComments projectId={id} />
@@ -304,6 +342,8 @@ export function ProjectDetail() {
         opened={!!statusModal}
         onClose={() => setStatusModal(null)}
         title={t('project.detail.statusModalTitle')}
+        fullScreen={isMobile}
+        size={isMobile ? '100%' : 'sm'}
       >
         <Stack>
           <Select

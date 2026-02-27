@@ -1,6 +1,7 @@
 import {
   Badge,
   Button,
+  Card,
   Flex,
   Group,
   Loader,
@@ -13,7 +14,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { IconFolder, IconPlus } from '@tabler/icons-react';
+import { IconFolder, IconFilter, IconPlus } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +26,8 @@ import { usePersonStore } from '../stores/usePersonStore';
 import { useTagStore } from '../stores/useTagStore';
 import { getProjectStatusColor, getStatusLabel } from '../utils/statusColor';
 import { EmptyState } from '../components/EmptyState';
+import { MobileBottomSheet } from '../components/MobileBottomSheet';
+import { useIsMobile } from '../utils/useIsMobile';
 
 type SortBy = 'updatedAt' | 'priority' | 'dueDate';
 
@@ -33,9 +36,11 @@ const PAGE_SIZE = 50;
 export function ProjectsList() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [items, setItems] = useState<ProjectListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
   // filters
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -69,12 +74,10 @@ export function ProjectsList() {
         sortBy,
       };
 
-      // Apply sort order based on sortBy type
       if (sortBy === 'updatedAt') req.sortOrder = 'desc';
       else if (sortBy === 'priority') req.sortOrder = 'asc';
       else if (sortBy === 'dueDate') req.sortOrder = 'asc';
 
-      // Apply filters only when set
       if (statusFilter) req.statuses = [statusFilter];
       if (countryFilter) req.countryCodes = [countryFilter];
       if (partnerFilter) req.partnerIds = [partnerFilter];
@@ -96,107 +99,215 @@ export function ProjectsList() {
     load();
   }, [load]);
 
-  // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1);
   }, [statusFilter, countryFilter, partnerFilter, ownerFilter, memberFilter, tagFilter, showArchived, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const activeFilterCount = [statusFilter, countryFilter, partnerFilter, ownerFilter, memberFilter]
+    .filter(Boolean).length + tagFilter.length;
+
+  const filterControls = (
+    <Stack gap="xs">
+      <Select
+        placeholder={t('project.list.statusPlaceholder')}
+        clearable
+        data={PROJECT_STATUSES.map((s) => ({ value: s, label: getStatusLabel(s, t) }))}
+        value={statusFilter}
+        onChange={setStatusFilter}
+      />
+      <Select
+        placeholder={t('project.list.countryPlaceholder')}
+        clearable
+        data={getCountries(i18n.language).map((c) => ({ value: c.code, label: `${c.code} ${c.name}` }))}
+        value={countryFilter}
+        onChange={setCountryFilter}
+        searchable
+      />
+      <Select
+        placeholder={t('project.list.partnerPlaceholder')}
+        clearable
+        data={partnerOptions()}
+        value={partnerFilter}
+        onChange={setPartnerFilter}
+        searchable
+      />
+      <Select
+        placeholder={t('project.list.ownerPlaceholder')}
+        clearable
+        data={personOptions()}
+        value={ownerFilter}
+        onChange={setOwnerFilter}
+        searchable
+      />
+      <Select
+        placeholder={t('project.list.memberPlaceholder')}
+        clearable
+        data={personOptions()}
+        value={memberFilter}
+        onChange={setMemberFilter}
+        searchable
+      />
+      <MultiSelect
+        placeholder={t('project.list.tagPlaceholder')}
+        clearable
+        data={allTags.map((tag) => ({ value: tag, label: tag }))}
+        value={tagFilter}
+        onChange={setTagFilter}
+        searchable
+      />
+      <Group gap="xs" wrap="wrap">
+        <Button
+          variant={showArchived ? 'filled' : 'light'}
+          size="xs"
+          onClick={() => setShowArchived((v) => !v)}
+        >
+          {showArchived ? t('project.list.hideArchived') : t('project.list.showArchived')}
+        </Button>
+        <Select
+          size="xs"
+          data={[
+            { value: 'updatedAt', label: t('project.list.sortUpdated') },
+            { value: 'priority', label: t('project.list.sortPriority') },
+            { value: 'dueDate', label: t('project.list.sortDueDate') },
+          ]}
+          value={sortBy}
+          onChange={(v) => v && setSortBy(v as SortBy)}
+          style={{ minWidth: 160 }}
+        />
+      </Group>
+    </Stack>
+  );
+
   return (
     <Stack gap="md" w="100%" pb="xl" style={{ minWidth: 0 }}>
       <Flex wrap="wrap" gap="sm" justify="space-between" align="center">
         <Title order={3}>{t('project.list.title')}</Title>
-        <Button
-          variant="gradient"
-          gradient={{ from: 'indigo', to: 'violet' }}
-          leftSection={<IconPlus size={18} />}
-          onClick={() => navigate('/projects/new')}
-        >
-          {t('project.list.new')}
-        </Button>
+        <Group gap="xs" wrap="wrap">
+          {isMobile && (
+            <Button
+              variant="light"
+              leftSection={<IconFilter size={16} />}
+              size="sm"
+              onClick={() => setFilterSheetOpen(true)}
+            >
+              {t('project.list.filters')}
+              {activeFilterCount > 0 && (
+                <Badge size="xs" ml={4} circle>{activeFilterCount}</Badge>
+              )}
+            </Button>
+          )}
+          <Button
+            variant="gradient"
+            gradient={{ from: 'indigo', to: 'violet' }}
+            leftSection={<IconPlus size={18} />}
+            onClick={() => navigate('/projects/new')}
+          >
+            {t('project.list.new')}
+          </Button>
+        </Group>
       </Flex>
 
-      <Paper>
-        <Stack gap="xs">
-          <Text size="xs" c="dimmed" fw={500}>{t('project.list.filters')}</Text>
-          <Flex wrap="wrap" gap="xs" align="flex-end">
-            <Select
-              placeholder={t('project.list.statusPlaceholder')}
-              clearable
-              data={PROJECT_STATUSES.map((s) => ({ value: s, label: getStatusLabel(s, t) }))}
-              value={statusFilter}
-              onChange={setStatusFilter}
-              style={{ minWidth: 120, flex: '1 1 120px' }}
-            />
-            <Select
-              placeholder={t('project.list.countryPlaceholder')}
-              clearable
-              data={getCountries(i18n.language).map((c) => ({ value: c.code, label: `${c.code} ${c.name}` }))}
-              value={countryFilter}
-              onChange={setCountryFilter}
-              style={{ minWidth: 120, flex: '1 1 140px' }}
-            />
-            <Select
-              placeholder={t('project.list.partnerPlaceholder')}
-              clearable
-              data={partnerOptions()}
-              value={partnerFilter}
-              onChange={setPartnerFilter}
-              searchable
-              style={{ minWidth: 120, flex: '1 1 140px' }}
-            />
-            <Select
-              placeholder={t('project.list.ownerPlaceholder')}
-              clearable
-              data={personOptions()}
-              value={ownerFilter}
-              onChange={setOwnerFilter}
-              searchable
-              style={{ minWidth: 120, flex: '1 1 140px' }}
-            />
-            <Select
-              placeholder={t('project.list.memberPlaceholder')}
-              clearable
-              data={personOptions()}
-              value={memberFilter}
-              onChange={setMemberFilter}
-              searchable
-              style={{ minWidth: 120, flex: '1 1 140px' }}
-            />
-            <MultiSelect
-              placeholder={t('project.list.tagPlaceholder')}
-              clearable
-              data={allTags.map((tag) => ({ value: tag, label: tag }))}
-              value={tagFilter}
-              onChange={setTagFilter}
-              searchable
-              style={{ minWidth: 140, flex: '1 1 160px' }}
-            />
-            <Button
-              variant={showArchived ? 'filled' : 'light'}
-              size="xs"
-              onClick={() => setShowArchived((v) => !v)}
-            >
-              {showArchived ? t('project.list.hideArchived') : t('project.list.showArchived')}
+      {/* Desktop filter panel */}
+      {!isMobile && (
+        <Paper>
+          <Stack gap="xs">
+            <Text size="xs" c="dimmed" fw={500}>{t('project.list.filters')}</Text>
+            <Flex wrap="wrap" gap="xs" align="flex-end">
+              <Select
+                placeholder={t('project.list.statusPlaceholder')}
+                clearable
+                data={PROJECT_STATUSES.map((s) => ({ value: s, label: getStatusLabel(s, t) }))}
+                value={statusFilter}
+                onChange={setStatusFilter}
+                style={{ minWidth: 120, flex: '1 1 120px' }}
+              />
+              <Select
+                placeholder={t('project.list.countryPlaceholder')}
+                clearable
+                data={getCountries(i18n.language).map((c) => ({ value: c.code, label: `${c.code} ${c.name}` }))}
+                value={countryFilter}
+                onChange={setCountryFilter}
+                style={{ minWidth: 120, flex: '1 1 140px' }}
+              />
+              <Select
+                placeholder={t('project.list.partnerPlaceholder')}
+                clearable
+                data={partnerOptions()}
+                value={partnerFilter}
+                onChange={setPartnerFilter}
+                searchable
+                style={{ minWidth: 120, flex: '1 1 140px' }}
+              />
+              <Select
+                placeholder={t('project.list.ownerPlaceholder')}
+                clearable
+                data={personOptions()}
+                value={ownerFilter}
+                onChange={setOwnerFilter}
+                searchable
+                style={{ minWidth: 120, flex: '1 1 140px' }}
+              />
+              <Select
+                placeholder={t('project.list.memberPlaceholder')}
+                clearable
+                data={personOptions()}
+                value={memberFilter}
+                onChange={setMemberFilter}
+                searchable
+                style={{ minWidth: 120, flex: '1 1 140px' }}
+              />
+              <MultiSelect
+                placeholder={t('project.list.tagPlaceholder')}
+                clearable
+                data={allTags.map((tag) => ({ value: tag, label: tag }))}
+                value={tagFilter}
+                onChange={setTagFilter}
+                searchable
+                style={{ minWidth: 140, flex: '1 1 160px' }}
+              />
+              <Button
+                variant={showArchived ? 'filled' : 'light'}
+                size="xs"
+                onClick={() => setShowArchived((v) => !v)}
+              >
+                {showArchived ? t('project.list.hideArchived') : t('project.list.showArchived')}
+              </Button>
+            </Flex>
+            <Flex gap="xs" align="center">
+              <Text size="xs" c="dimmed">{t('project.list.sortBy')}</Text>
+              <Select
+                size="xs"
+                data={[
+                  { value: 'updatedAt', label: t('project.list.sortUpdated') },
+                  { value: 'priority', label: t('project.list.sortPriority') },
+                  { value: 'dueDate', label: t('project.list.sortDueDate') },
+                ]}
+                value={sortBy}
+                onChange={(v) => v && setSortBy(v as SortBy)}
+                style={{ minWidth: 180 }}
+              />
+            </Flex>
+          </Stack>
+        </Paper>
+      )}
+
+      {/* Mobile filter bottom sheet */}
+      {isMobile && (
+        <MobileBottomSheet
+          opened={filterSheetOpen}
+          onClose={() => setFilterSheetOpen(false)}
+          title={t('project.list.filters')}
+        >
+          <Stack gap="sm" pb="md">
+            {filterControls}
+            <Button fullWidth onClick={() => setFilterSheetOpen(false)}>
+              {t('common.confirm')}
             </Button>
-          </Flex>
-          <Flex gap="xs" align="center">
-            <Text size="xs" c="dimmed">{t('project.list.sortBy')}</Text>
-            <Select
-              size="xs"
-              data={[
-                { value: 'updatedAt', label: t('project.list.sortUpdated') },
-                { value: 'priority', label: t('project.list.sortPriority') },
-                { value: 'dueDate', label: t('project.list.sortDueDate') },
-              ]}
-              value={sortBy}
-              onChange={(v) => v && setSortBy(v as SortBy)}
-              style={{ minWidth: 180 }}
-            />
-          </Flex>
-        </Stack>
-      </Paper>
+          </Stack>
+        </MobileBottomSheet>
+      )}
 
       <Paper>
         {loading ? (
@@ -211,7 +322,48 @@ export function ProjectsList() {
             actionLabel={total === 0 && !statusFilter ? t('project.list.new') : undefined}
             onAction={total === 0 && !statusFilter ? () => navigate('/projects/new') : undefined}
           />
+        ) : isMobile ? (
+          /* Mobile card view */
+          <Stack gap="xs" p="xs">
+            {items.map((p) => (
+              <Card
+                key={p.id}
+                padding="sm"
+                radius="md"
+                withBorder
+                style={{ cursor: 'pointer' }}
+                onClick={() => navigate(`/projects/${p.id}`)}
+              >
+                <Stack gap={6}>
+                  <Group justify="space-between" wrap="nowrap" gap="xs">
+                    <Text fw={600} size="sm" style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.name}
+                    </Text>
+                    <Badge size="xs" color={getProjectStatusColor(p.current_status)} style={{ flexShrink: 0 }}>
+                      {getStatusLabel(p.current_status, t)}
+                    </Badge>
+                  </Group>
+                  <Group gap="xs" wrap="wrap">
+                    {p.country_code && <Text size="xs" c="dimmed">{p.country_code}</Text>}
+                    {p.partner_name && <Text size="xs" c="dimmed">{p.partner_name}</Text>}
+                    {p.owner_name && <Text size="xs" c="dimmed">{p.owner_name}</Text>}
+                  </Group>
+                  {p.due_date && (
+                    <Text size="xs" c="dimmed">{t('project.list.colDueDate')}: {p.due_date}</Text>
+                  )}
+                  {p.tags && p.tags.length > 0 && (
+                    <Group gap={4} wrap="wrap">
+                      {p.tags.map((tag) => (
+                        <Badge key={tag} size="xs" variant="outline">{tag}</Badge>
+                      ))}
+                    </Group>
+                  )}
+                </Stack>
+              </Card>
+            ))}
+          </Stack>
         ) : (
+          /* Desktop table view */
           <>
             <Table.ScrollContainer minWidth={700}>
               <Table striped highlightOnHover>
@@ -255,25 +407,25 @@ export function ProjectsList() {
                 </Table.Tbody>
               </Table>
             </Table.ScrollContainer>
-            {totalPages > 1 && (
-              <Group justify="space-between" mt="md" px="sm">
-                <Text size="sm" c="dimmed">
-                  {t('project.list.total', { count: total })}
-                </Text>
-                <Pagination
-                  value={page}
-                  onChange={setPage}
-                  total={totalPages}
-                  size="sm"
-                />
-              </Group>
-            )}
-            {totalPages <= 1 && total > 0 && (
-              <Text size="sm" c="dimmed" ta="right" mt="xs" px="sm">
-                {t('project.list.total', { count: total })}
-              </Text>
-            )}
           </>
+        )}
+        {totalPages > 1 && (
+          <Group justify="space-between" mt="md" px="sm" wrap="wrap">
+            <Text size="sm" c="dimmed">
+              {t('project.list.total', { count: total })}
+            </Text>
+            <Pagination
+              value={page}
+              onChange={setPage}
+              total={totalPages}
+              size="sm"
+            />
+          </Group>
+        )}
+        {totalPages <= 1 && total > 0 && (
+          <Text size="sm" c="dimmed" ta="right" mt="xs" px="sm">
+            {t('project.list.total', { count: total })}
+          </Text>
         )}
       </Paper>
     </Stack>

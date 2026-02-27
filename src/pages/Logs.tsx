@@ -25,6 +25,7 @@ import {
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { useIsMobile } from '../utils/useIsMobile';
 import { logsApi, type LogFileDto, type LogTailResp } from '../api/logs';
 import { showError, showSuccess } from '../utils/errorToast';
 import { logger } from '../utils/logger';
@@ -35,6 +36,7 @@ import { writeTextFile } from '@tauri-apps/plugin-fs';
 export function Logs() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [files, setFiles] = useState<LogFileDto[]>([]);
   const [selectedFile, setSelectedFile] = useState<string>('');
   const [logContent, setLogContent] = useState<string>('');
@@ -240,8 +242,8 @@ export function Logs() {
 
   return (
     <Stack gap="md" w="100%" pb="xl" style={{ minWidth: 0 }}>
-      <Group justify="space-between" align="center">
-        <Group>
+      <Group justify="space-between" align="center" wrap="wrap">
+        <Group wrap="nowrap">
           <Button
             variant="subtle"
             leftSection={<IconArrowLeft size={16} />}
@@ -341,33 +343,35 @@ export function Logs() {
           </Group>
 
           {/* 搜索与开关 */}
-          <Group>
+          <Stack gap="xs">
             <TextInput
               placeholder={t('logs.search')}
               leftSection={<IconSearch size={16} />}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.currentTarget.value)}
-              style={{ flex: 1 }}
             />
-            <Switch
-              label={t('logs.autoRefresh')}
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.currentTarget.checked)}
-            />
-            <Switch
-              label={t('logs.redactSensitive')}
-              checked={redact}
-              onChange={(e) => setRedact(e.currentTarget.checked)}
-            />
-          </Group>
+            <Group wrap="wrap" gap="xs">
+              <Switch
+                label={t('logs.autoRefresh')}
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.currentTarget.checked)}
+              />
+              <Switch
+                label={t('logs.redactSensitive')}
+                checked={redact}
+                onChange={(e) => setRedact(e.currentTarget.checked)}
+              />
+            </Group>
+          </Stack>
 
           {/* 操作按钮 */}
-          <Group>
+          <Group wrap="wrap" gap="xs">
             <Button
               leftSection={<IconCopy size={16} />}
               variant="light"
               onClick={handleCopy}
               disabled={!logContent}
+              fullWidth={isMobile}
             >
               {t('logs.copy')}
             </Button>
@@ -376,6 +380,7 @@ export function Logs() {
               variant="light"
               onClick={handleDownload}
               disabled={!logContent}
+              fullWidth={isMobile}
             >
               {t('logs.download')}
             </Button>
@@ -385,6 +390,7 @@ export function Logs() {
               color="red"
               onClick={() => setClearConfirmOpened(true)}
               disabled={!selectedFile}
+              fullWidth={isMobile}
             >
               {t('logs.clear')}
             </Button>
@@ -398,7 +404,7 @@ export function Logs() {
                 : ''}
             </Text>
             <ScrollArea
-              h={500}
+              h={isMobile ? 300 : 500}
               style={{
                 border: '1px solid rgba(0, 0, 0, 0.1)',
                 borderRadius: 8,

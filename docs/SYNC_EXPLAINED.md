@@ -4,6 +4,7 @@
 >
 > - 本文档已按当前代码实现重写，和 `docs/SYNC_S3_DESIGN.md` 保持一致口径。
 > - 命令契约与错误码以 `docs/PRD.md` 为准。
+> - Android 支持（后台自动同步、HTTPS-only、Keystore 凭据）见 `docs/ANDROID_SUPPORT.md`。
 > - 代码真相源：
 >   - `src-tauri/src/commands/sync.rs`
 >   - `src-tauri/src/sync/delta_sync.rs`

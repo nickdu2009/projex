@@ -1,4 +1,4 @@
-import { Button, Flex, Loader, Paper, Stack, Table, Text, Title } from '@mantine/core';
+import { Badge, Button, Card, Flex, Group, Loader, Paper, Stack, Table, Text, Title } from '@mantine/core';
 import { IconBuildingCommunity, IconPlus } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -6,10 +6,12 @@ import { useTranslation } from 'react-i18next';
 import { partnersApi, type PartnerDto } from '../api/partners';
 import { showError } from '../utils/errorToast';
 import { EmptyState } from '../components/EmptyState';
+import { useIsMobile } from '../utils/useIsMobile';
 
 export function PartnersList() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [list, setList] = useState<PartnerDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
@@ -63,7 +65,34 @@ export function PartnersList() {
             actionLabel={t('partner.list.new')}
             onAction={() => navigate('/partners/new')}
           />
+        ) : isMobile ? (
+          /* Mobile card view */
+          <Stack gap="xs" p="xs">
+            {list.map((p) => (
+              <Card
+                key={p.id}
+                padding="sm"
+                radius="md"
+                withBorder
+                style={{ cursor: 'pointer' }}
+                onClick={() => navigate(`/partners/${p.id}`)}
+              >
+                <Group justify="space-between" wrap="nowrap" gap="xs">
+                  <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
+                    <Text fw={600} size="sm" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.name}
+                    </Text>
+                    {p.note && <Text size="xs" c="dimmed">{p.note}</Text>}
+                  </Stack>
+                  <Badge size="xs" color={p.is_active ? 'teal' : 'gray'} style={{ flexShrink: 0 }}>
+                    {p.is_active ? t('common.active') : t('common.inactive')}
+                  </Badge>
+                </Group>
+              </Card>
+            ))}
+          </Stack>
         ) : (
+          /* Desktop table view */
           <Table.ScrollContainer minWidth={400}>
             <Table>
               <Table.Thead>

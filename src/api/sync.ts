@@ -74,4 +74,12 @@ export const syncApi = {
   async restoreSnapshot(): Promise<string> {
     return await invoke<string>('cmd_sync_restore_snapshot');
   },
+
+  async exportConfig(): Promise<string> {
+    return await invoke<string>('cmd_sync_export_config');
+  },
+
+  async importConfig(json: string): Promise<SyncConfigDto> {
+    return await invoke<SyncConfigDto>('cmd_sync_import_config', { req: { json } });
+  },
 };

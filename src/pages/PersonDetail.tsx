@@ -1,8 +1,9 @@
-import { Badge, Button, Flex, Loader, Paper, Stack, Table, Text, Title } from '@mantine/core';
+import { Badge, Button, Card, Flex, Group, Loader, Paper, Stack, Table, Text, Title } from '@mantine/core';
 import { IconArrowLeft, IconEdit } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useIsMobile } from '../utils/useIsMobile';
 import { peopleApi, type PersonDto, type PersonProjectItem } from '../api/people';
 import { showError, showSuccess } from '../utils/errorToast';
 import { getRoleLabel } from '../utils/roleLabel';
@@ -13,6 +14,7 @@ export function PersonDetail() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [person, setPerson] = useState<PersonDto | null>(null);
   const [currentProjects, setCurrentProjects] = useState<PersonProjectItem[]>([]);
   const [allProjects, setAllProjects] = useState<PersonProjectItem[]>([]);
@@ -67,7 +69,7 @@ export function PersonDetail() {
         <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/people')}>
           {t('common.backToList')}
         </Button>
-        <Flex gap="xs">
+        <Group gap="xs" wrap="wrap">
           <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => navigate(`/people/${id}/edit`)}>
             {t('common.edit')}
           </Button>
@@ -76,7 +78,7 @@ export function PersonDetail() {
               {t('common.deactivate')}
             </Button>
           )}
-        </Flex>
+        </Group>
       </Flex>
 
       <Paper
@@ -119,6 +121,17 @@ export function PersonDetail() {
         <Title order={5} mb="xs">{t('person.detail.currentProjects')}</Title>
         {currentProjects.length === 0 ? (
           <Text size="sm" c="dimmed">{t('common.none')}</Text>
+        ) : isMobile ? (
+          <Stack gap="xs">
+            {currentProjects.map((proj) => (
+              <Card key={proj.id} padding="xs" radius="sm" withBorder style={{ cursor: 'pointer' }} onClick={() => navigate(`/projects/${proj.id}`)}>
+                <Group justify="space-between" wrap="nowrap" gap="xs">
+                  <Text size="sm" fw={500} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.name}</Text>
+                  <Badge size="xs" color={getProjectStatusColor(proj.current_status)} style={{ flexShrink: 0 }}>{getStatusLabel(proj.current_status, t)}</Badge>
+                </Group>
+              </Card>
+            ))}
+          </Stack>
         ) : (
           <Table.ScrollContainer minWidth={300}>
             <Table>
@@ -155,6 +168,20 @@ export function PersonDetail() {
         <Title order={5} mb="xs">{t('person.detail.projectHistory')}</Title>
         {allProjects.length === 0 ? (
           <Text size="sm" c="dimmed">{t('common.none')}</Text>
+        ) : isMobile ? (
+          <Stack gap="xs">
+            {allProjects.map((proj) => (
+              <Card key={proj.id} padding="xs" radius="sm" withBorder style={{ cursor: 'pointer' }} onClick={() => navigate(`/projects/${proj.id}`)}>
+                <Stack gap={2}>
+                  <Group justify="space-between" wrap="nowrap" gap="xs">
+                    <Text size="sm" fw={500} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.name}</Text>
+                    <Badge size="xs" color={getProjectStatusColor(proj.current_status)} style={{ flexShrink: 0 }}>{getStatusLabel(proj.current_status, t)}</Badge>
+                  </Group>
+                  {proj.last_involved_at && <Text size="xs" c="dimmed">{proj.last_involved_at}</Text>}
+                </Stack>
+              </Card>
+            ))}
+          </Stack>
         ) : (
           <Table.ScrollContainer minWidth={400}>
             <Table>

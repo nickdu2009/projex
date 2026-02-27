@@ -1003,7 +1003,45 @@ type SyncStatusDto = {
 - create: 导出全量 JSON，checksum 校验后上传。
 - restore: 下载快照后事务恢复（含 comments/tags/status history）。
 
-**9) Sync 自动化测试与 CI 口径**
+**9) `cmd_sync_export_config`**
+```ts
+// Req: void
+// Resp: string  — JSON 文本（见下方格式）
+```
+**导出格式**
+```json
+{
+  "version": 1,
+  "exported_at": "<RFC3339>",
+  "sync_config": {
+    "bucket": "...",
+    "endpoint": "...",
+    "access_key": "...",
+    "secret_key": "...",
+    "auto_sync_interval_minutes": 5
+  }
+}
+```
+**语义（实现约束）**
+- 导出内容：`bucket`、`endpoint`、`access_key`、`secret_key`（明文）、`auto_sync_interval_minutes`。
+- **不导出**：`device_id`、`sync_enabled`、`last_sync`、`local_version`（设备运行时状态，每台设备独立）。
+- 前端负责弹出文件保存对话框，写入磁盘。
+- 文件包含明文凭据，UI 需提示用户妥善保管。
+
+**10) `cmd_sync_import_config`**
+```ts
+type SyncImportConfigReq = { json: string };
+// Resp: SyncConfigDto  — 导入后的最新配置
+```
+**语义（实现约束）**
+- 校验 `version === 1`，否则返回错误码 `UNSUPPORTED_VERSION`。
+- 仅覆盖非空字段；空字符串不覆盖已有值（与 `cmd_sync_update_config` 行为一致）。
+- **不修改** `sync_enabled`、`device_id`、`last_sync`、`local_version`。
+- Android 平台对 `endpoint` 强制 HTTPS 校验（`ENDPOINT_NOT_HTTPS`）。
+- 导入后刷新调度器（interval 可能变化），但不自动启用同步。
+- 返回最新 `SyncConfigDto`，前端直接刷新 UI 状态。
+
+**11) Sync 自动化测试与 CI 口径**
 - 集成测试：`src-tauri/tests/test_s3_minio.rs`
   - smoke（upload/download/delete）
   - `list_objects_v2` 分页（>1000 对象）

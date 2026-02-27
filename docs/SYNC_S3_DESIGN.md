@@ -15,6 +15,7 @@
 - 补齐 snapshot restore 的 `project_comments` 恢复。
 - 增加回流抑制：远端应用后将触发器产生的 `sync_metadata` 标记为已同步。
 - 增加最小 LWW 防护：`remote_version < local_version` 时跳过覆盖。
+- **新增**：`cmd_sync_export_config` / `cmd_sync_import_config` — 同步配置导入导出，支持跨设备快速迁移凭据。
 
 ## 1. 方案概述
 
@@ -400,6 +401,7 @@ sequenceDiagram
 - **完整性保护**：Delta/Snapshot 在应用前执行 SHA-256 校验。
 - **错误可见性**：S3 错误码在命令层映射，前端可读。
 - **凭据保护（展示侧）**：前端默认遮罩，日志侧支持敏感信息脱敏。
+- **Android 基线（MVP）**：Android 端强制 HTTPS-only，并要求凭据使用 Keystore 安全存储（见 `docs/ANDROID_SUPPORT.md`）。
 
 ### 6.2 未实现（规划中）
 
@@ -522,7 +524,65 @@ flowchart LR
 
 - 方案A关键闭环已完成：上传、拉取、校验、应用、防回流、最小 LWW。
 - 当前架构满足个人多设备分钟级同步需求，成本低，维护简单。
+- 新增同步配置导入导出（`cmd_sync_export_config` / `cmd_sync_import_config`），支持跨设备快速迁移 S3 凭据。
 - 下一阶段建议优先做“凭据安全 + 重试退避 + 指标化”三项增强。
+
+---
+
+## 12. 同步配置导入导出设计
+
+### 12.1 流程
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant UI as Settings 页面
+    participant Cmd as Tauri Commands
+    participant DB as sync_config (SQLite)
+    participant FS as 本地文件系统
+
+    User->>UI: 点击"导出同步配置"
+    UI->>Cmd: cmd_sync_export_config
+    Cmd->>DB: 读取 bucket/endpoint/access_key/secret_key/interval
+    DB-->>Cmd: 配置值
+    Cmd-->>UI: JSON 文本（version=1）
+    UI->>FS: 弹出保存对话框，写入文件
+
+    User->>UI: 点击"导入同步配置"，选择文件
+    UI->>Cmd: cmd_sync_import_config(json)
+    Cmd->>Cmd: 校验 version === 1
+    Cmd->>DB: 写入非空字段（不覆盖 device_id/sync_enabled）
+    Cmd->>Cmd: 刷新调度器
+    Cmd-->>UI: 最新 SyncConfigDto
+    UI->>UI: 刷新表单状态
+```
+
+### 12.2 导出 JSON 格式（version=1）
+
+```json
+{
+  "version": 1,
+  "exported_at": "2026-02-27T10:00:00Z",
+  "sync_config": {
+    "bucket": "my-bucket",
+    "endpoint": "https://xxx.r2.cloudflarestorage.com",
+    "access_key": "AK...",
+    "secret_key": "SK...",
+    "auto_sync_interval_minutes": 5
+  }
+}
+```
+
+**不导出字段**（设备运行时状态，每台设备独立）：`device_id`、`sync_enabled`、`last_sync`、`local_version`、`last_sync_error`。
+
+### 12.3 安全说明
+
+| 风险 | 缓解措施 |
+|------|---------|
+| 导出文件含明文 Secret Key | UI 描述提示用户妥善保管，勿上传至公开位置 |
+| 导入覆盖已有凭据 | 空字符串不覆盖已有值；`sync_enabled` 不被修改，需用户手动开启 |
+| Android HTTP 端点 | 导入时同样强制 HTTPS 校验（`ENDPOINT_NOT_HTTPS`） |
+| 版本不兼容 | 校验 `version === 1`，不支持的版本返回 `UNSUPPORTED_VERSION` 错误 |
 
 ---
 

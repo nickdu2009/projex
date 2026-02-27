@@ -13,8 +13,8 @@ flowchart LR
   M3 --> M4[M4 同步与改进]
   M4 --> M5[M5 国际化]
   M5 --> M6[M6 富文本评论]
-  M6 --> DONE[当前版本完成]
-  DONE --> M7[M7 同步增强 VNext]
+  M6 --> M8[M8 Android 支持]
+  M8 --> M7[M7 同步增强 VNext]
 ```
 
 | 里程碑 | 目标 | 状态 |
@@ -25,6 +25,7 @@ flowchart LR
 | **M4** | 同步与改进：S3 多设备同步闭环 + 导入 + 标签筛选 + Zustand | ✅ 已完成（方案A收尾） |
 | **M5** | 国际化：i18n 框架 + 英文/中文翻译 + 语言切换 | ✅ 已完成 |
 | **M6** | 富文本评论：Tiptap 编辑器 + CRUD + 置顶 + 关联操作人 + S3 同步 | ✅ 已完成 |
+| **M8** | Android 支持：WorkManager 后台同步 + JNI 桥接 + 移动端 UI 适配 | ✅ 已完成 |
 | **M7** | 同步增强（P1-P4）：安全/可靠性/可观测性/性能 | 🚧 规划中 |
 
 ---
@@ -325,11 +326,83 @@ flowchart LR
 
 ---
 
+## M8：Android 支持 ✅ 已完成
+
+**目标**：支持 Android 平台运行，实现后台自动同步（≥15 分钟）与全面移动端 UI 适配。
+
+### 详细需求内容
+
+#### 8.1 Android 工程初始化
+- [x] 初始化 Tauri Android 工程（`tauri android init`，生成 `src-tauri/gen/android`）
+- [x] 配置 Android SDK / NDK / Rust 交叉编译工具链（`aarch64-linux-android`）
+- [x] 确认 SQLite 可读写、基础 Tauri 命令可 invoke
+- [x] 文档：`docs/ANDROID_DEV_SETUP.md`（环境搭建指南）
+
+#### 8.2 WorkManager 后台同步
+- [x] `SyncWorker.kt`（`CoroutineWorker`）：调用 JNI `nativeRunSyncOnce()`，解析 JSON 结果
+- [x] `SyncScheduler.kt`：封装 `enqueueUniquePeriodicWork`（15 分钟，`NetworkType.CONNECTED`，`UPDATE` 策略）
+- [x] `BootReceiver.kt`：监听 `BOOT_COMPLETED` + `MY_PACKAGE_REPLACED`，重启后重新 schedule
+- [x] `MainActivity.kt`：启动时调用 `SyncScheduler.schedule()`
+- [x] `AndroidManifest.xml`：声明 `RECEIVE_BOOT_COMPLETED` 权限和 `BootReceiver`
+- [x] `build.gradle.kts`：添加 `work-runtime-ktx` 依赖
+
+#### 8.3 JNI 桥接（Rust ↔ Kotlin）
+- [x] `src-tauri/src/android_jni.rs`：暴露 `Java_com_nickdu_projex_SyncWorker_nativeRunSyncOnce`
+- [x] `lib.rs`：`mobile_entry_point` 初始化 DbPool 后调用 `android_jni::register_pool`
+- [x] `Cargo.toml`：Android 平台添加 `jni` 依赖
+
+#### 8.4 安全加固
+- [x] HTTPS-only 双重校验：前端 `Settings.tsx` 表单校验 + Rust `cmd_sync_update_config` / `android_run_sync_once` 校验
+- [x] 错误码：`ENDPOINT_NOT_HTTPS`
+- [x] i18n：`settings.sync.endpointHttpsRequired` 翻译 key（en + zh）
+
+#### 8.5 凭据存储（SQLite，与桌面一致）
+- [x] Android 端凭据存储与桌面对齐，统一使用 SQLite `sync_config` 表
+- [x] JNI 入口无需接收凭据参数，由 Rust 直接从 SQLite 读取
+- [x] 评估并放弃 Android Keystore 方案（复杂度高，MVP 阶段收益有限）
+
+#### 8.6 并发互斥
+- [x] `sync.lock` 文件锁：`android_run_sync_once` 中使用 `fs2::try_lock_exclusive`
+- [x] 锁被占用时返回 `{"status":"skipped","message":"lock busy"}`，等待下一周期
+
+#### 8.7 移动端 UI 适配（card-first 响应式布局）
+- [x] `useIsMobile` hook（`useMediaQuery('(max-width: 768px)')`）
+- [x] `responsive.ts`：响应式常量（断点、padding、grid cols）
+- [x] `MobilePageHeader`：统一页面头部组件
+- [x] `MobileBottomSheet`：底部抽屉（筛选面板、操作菜单）
+- [x] `Layout.tsx`：侧边栏改 Drawer + Burger 按钮
+- [x] 列表页（Projects/People/Partners）：card-first 双视图 + 底部抽屉筛选
+- [x] 详情页（Project/Person/Partner）：表格改卡片 + 按钮换行 + Modal 全屏
+- [x] 表单页（Project/Person/Partner Form）：全宽布局 + 提交按钮全宽
+- [x] Settings/Logs：按钮组换行、ScrollArea 高度响应式
+- [x] ConfirmModal：移动端全屏
+- [x] RichTextEditor：工具栏换行 + 移动端简化
+
+#### 8.8 验收
+- [x] `tauri android dev` 可在模拟器（API 36）上成功运行
+- [x] 导入测试数据后，列表/详情/表单页在移动端正常显示
+- [x] WorkManager 后台 Worker 触发，Logcat 可见 `nativeRunSyncOnce result`
+- [x] endpoint 配置 `http://` 被前端和 Rust 双重拒绝
+- [x] `cargo fmt` + `cargo clippy` + ESLint 全部通过
+
+---
+
 ## M7：同步增强（VNext）🚧 规划中
 
 **目标**：在已完成同步闭环基础上，继续提升安全性、可靠性、可观测性与性能。
 
 ### 详细需求内容
+
+#### 7.0 同步配置导入导出（已完成）✅
+
+> 目标：支持将 S3 凭据导出为 JSON 文件，便于在新设备上快速完成同步配置。
+
+- [x] **后端**：`cmd_sync_export_config` — 读取 `sync_config` 表，生成带版本号的 JSON（含 `bucket`/`endpoint`/`access_key`/`secret_key`/`auto_sync_interval_minutes`，不含 `device_id`/`sync_enabled` 等运行时状态）
+- [x] **后端**：`cmd_sync_import_config` — 解析 JSON，校验 `version === 1`，仅覆盖非空字段，不修改 `sync_enabled`/`device_id`，Android 强制 HTTPS 校验，导入后刷新调度器，返回最新 `SyncConfigDto`
+- [x] **前端**：`src/api/sync.ts` 新增 `exportConfig()` / `importConfig()` 封装
+- [x] **前端**：`Settings.tsx` 同步配置区块底部新增"导出同步配置"/"导入同步配置"按钮
+- [x] **i18n**：`en.json` / `zh.json` 新增 11 个翻译 key（`settings.sync.exportConfig` 等）
+- [x] **安全**：导出文件包含明文 Secret Key，UI 提示用户妥善保管
 
 #### 7.1 安全增强（P1）
 - [ ] 可选 E2E 加密（对象体加密 + 本地密钥管理）
@@ -362,7 +435,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  M1 --> M2 --> M3 --> M4 --> M5 --> M6 --> M7
+  M1 --> M2 --> M3 --> M4 --> M5 --> M6 --> M8 --> M7
 ```
 
 - **M2 依赖 M1**：M1 已有命令与 DB，M2 在此基础上补全命令并做完整 UI
@@ -370,4 +443,5 @@ flowchart LR
 - **M4 依赖 M3**：核心 MVP 稳定后扩展同步与改进
 - **M5 依赖 M4**：稳定功能后做前端国际化
 - **M6 依赖 M5**：国际化完成后添加富文本评论功能
-- **M7 依赖 M6**：在既有同步闭环上做安全、可靠性与性能增强
+- **M8 依赖 M6**：功能完整后扩展 Android 平台支持与移动端 UI 适配
+- **M7 依赖 M8**：在既有同步闭环与 Android 支持基础上做安全、可靠性与性能增强
