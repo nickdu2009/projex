@@ -266,7 +266,7 @@ jobs:
       - name: Locate APK
         id: apk
         run: |
-          APK=$(find src-tauri/gen/android/app/build/outputs/apk/release \
+          APK=$(find src-tauri/gen/android/app/build/outputs/apk \
                      -name "*.apk" | head -1)
           echo "path=$APK" >> $GITHUB_OUTPUT
           echo "Found APK: $APK"
