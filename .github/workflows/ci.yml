@@ -14,11 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       sync_minio: ${{ steps.filter.outputs.sync_minio }}
+      android: ${{ steps.filter.outputs.android }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Detect sync/minio related changes
+      - name: Detect changed paths
         id: filter
         uses: dorny/paths-filter@v3
         with:
@@ -30,6 +31,12 @@ jobs:
               - 'src-tauri/src/sync/**'
               - 'src-tauri/tests/test_s3_minio.rs'
               - 'src-tauri/tests/test_sync_e2e_minio.rs'
+            android:
+              - '.github/workflows/ci.yml'
+              - 'src-tauri/src/**'
+              - 'src-tauri/Cargo.toml'
+              - 'src-tauri/Cargo.lock'
+              - 'src-tauri/gen/android/**'
 
   # Frontend lint & type check
   frontend:
@@ -142,3 +149,57 @@ jobs:
       - name: Stop MinIO
         if: always()
         run: docker compose --env-file .env.minio.example -f docker-compose.minio.yml down -v
+
+  # Android cross-compilation check (arm64-v8a)
+  # Verifies that the Rust crate compiles for Android without running a full Gradle build.
+  # Triggered only when Rust sources, Cargo manifests, or Android gen files change.
+  android-cross-check:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          key: android-cross
+
+      - name: Setup Java (required by Android SDK cmdline-tools)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          sdkmanager --install "ndk;29.0.14206865"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Cross-compile check (arm64-v8a)
+        working-directory: src-tauri
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ env.NDK_HOME }}
+        run: cargo ndk -t arm64-v8a check
+
+      - name: Cross-compile check (x86_64, emulator target)
+        working-directory: src-tauri
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ env.NDK_HOME }}
+        run: cargo ndk -t x86_64 check
