@@ -242,6 +242,14 @@ jobs:
       - name: Build Vite frontend
         run: npm run build
 
+      - name: Generate tauri.settings.gradle
+        # tauri.settings.gradle is git-ignored because it contains absolute paths to the local
+        # Cargo registry. We must regenerate it in CI before Gradle can read settings.gradle.
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ env.NDK_HOME }}
+        run: npm run tauri -- android init
+
       - name: Build signed release APK
         working-directory: src-tauri/gen/android
         env:
