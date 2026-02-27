@@ -50,6 +50,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # ── Paths ─────────────────────────────────────────────────────────────────────
 KEYSTORE_PATH="${KEYSTORE_PATH:-}"
 KEYSTORE_OUT="${KEYSTORE_OUT:-$REPO_ROOT/secret/projex-release.jks}"
+# Ensure the secret directory exists with restricted permissions
+mkdir -p "$REPO_ROOT/secret"
+chmod 700 "$REPO_ROOT/secret"
 ENV_OUT="${ENV_OUT:-$REPO_ROOT/android-signing.env}"
 SKIP_GH="${SKIP_GH:-0}"
 KEY_ALIAS="projex"
@@ -151,9 +154,6 @@ if [ -z "$KEYSTORE_PATH" ]; then
 
     DNAME="CN=${DNAME_CN}, OU=${DNAME_OU}, O=${DNAME_O}, L=${DNAME_L}, ST=${DNAME_ST}, C=${DNAME_C}"
     KEYSTORE_PATH="$KEYSTORE_OUT"
-
-    mkdir -p "$(dirname "$KEYSTORE_PATH")"
-    chmod 700 "$(dirname "$KEYSTORE_PATH")"
 
     info "Generating keystore at $KEYSTORE_PATH ..."
     keytool -genkey -v \
