@@ -15,7 +15,10 @@ pub use comment::{
     comment_create, comment_delete, comment_list_by_project, comment_update, CommentCreateReq,
     CommentDto, CommentUpdateReq,
 };
-pub use data_transfer::{export_json_string, import_json_string, ImportResult};
+pub use data_transfer::{
+    export_json_string, export_persons_csv, import_json_string, import_persons_csv, ImportResult,
+    PersonImportResult,
+};
 pub use partner::{
     partner_create, partner_deactivate, partner_get, partner_list, partner_projects,
     partner_update, PartnerCreateReq, PartnerDto, PartnerProjectItemDto, PartnerUpdateReq,

@@ -1,6 +1,9 @@
 //! Export / Import command handlers.
 
-use crate::app::{export_json_string, import_json_string, ImportResult};
+use crate::app::{
+    export_json_string, export_persons_csv, import_json_string, import_persons_csv, ImportResult,
+    PersonImportResult,
+};
 use crate::error::AppError;
 use crate::infra::DbPool;
 use serde::Deserialize;
@@ -18,6 +21,12 @@ pub struct ImportJsonReq {
     pub json: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPersonsCsvReq {
+    pub csv: String,
+}
+
 #[tauri::command]
 pub fn cmd_export_json(
     pool: State<DbPool>,
@@ -30,4 +39,17 @@ pub fn cmd_export_json(
 #[tauri::command]
 pub fn cmd_import_json(pool: State<DbPool>, req: ImportJsonReq) -> Result<ImportResult, AppError> {
     import_json_string(&pool, &req.json)
+}
+
+#[tauri::command]
+pub fn cmd_export_persons_csv(pool: State<DbPool>) -> Result<String, AppError> {
+    export_persons_csv(&pool)
+}
+
+#[tauri::command]
+pub fn cmd_import_persons_csv(
+    pool: State<DbPool>,
+    req: ImportPersonsCsvReq,
+) -> Result<PersonImportResult, AppError> {
+    import_persons_csv(&pool, &req.csv)
 }

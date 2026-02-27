@@ -276,6 +276,8 @@ pub fn run() {
             commands::comment::cmd_comment_list,
             commands::data_transfer::cmd_export_json,
             commands::data_transfer::cmd_import_json,
+            commands::data_transfer::cmd_export_persons_csv,
+            commands::data_transfer::cmd_import_persons_csv,
             commands::logs::cmd_log_list_files,
             commands::logs::cmd_log_tail,
             commands::logs::cmd_log_clear,

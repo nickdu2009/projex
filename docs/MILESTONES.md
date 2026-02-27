@@ -431,6 +431,32 @@ flowchart LR
 
 ---
 
+## M9：人员导入导出（已完成）✅
+
+**目标**：支持将人员列表批量导出为 CSV 文件，并从 CSV 文件批量导入/更新人员。
+
+### 详细需求内容
+
+#### 9.1 后端
+- [x] **use case**：`export_persons_csv` — 查询所有人员，生成标准 CSV（列：display_name, email, role, note, is_active），字段含特殊字符时自动加引号转义
+- [x] **use case**：`import_persons_csv` — 解析 CSV，按 `display_name`（大小写不敏感）匹配：存在则更新字段，不存在则新建；返回 `PersonImportResult`（created/updated/skipped/errors）
+- [x] **Tauri commands**：`cmd_export_persons_csv` / `cmd_import_persons_csv`
+- [x] **注册命令**：在 `lib.rs` 的 `invoke_handler` 中注册两个新命令
+
+#### 9.2 前端
+- [x] **API 封装**：`peopleApi.exportCsv()` / `peopleApi.importCsv(csv)` + `PersonImportResult` 接口
+- [x] **导出 UI**：`PeopleList.tsx` 顶部工具栏新增"导出 CSV"按钮，调用 Tauri `save` 对话框选择保存路径，写入 CSV 文件
+- [x] **导入 UI**：`PeopleList.tsx` 顶部工具栏新增"导入 CSV"按钮，弹出 Modal；Modal 内含格式说明、文件选择按钮、前 5 行预览表格、导入结果展示（含行错误列表）
+- [x] **i18n**：`en.json` / `zh.json` 各新增 14 个翻译 key（`person.list.exportCsv` 等）
+
+#### 9.3 验收
+- [x] 导出 CSV 文件可用 Excel / Numbers 正常打开
+- [x] 导入时按姓名幂等（重复导入不产生重复记录）
+- [x] 导入后列表自动刷新
+- [x] 行错误（列数不足、is_active 非法值等）不阻断整批导入，逐行报告
+
+---
+
 ## 依赖关系
 
 ```mermaid

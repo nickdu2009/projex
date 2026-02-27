@@ -1,10 +1,12 @@
-//! Export / Import use cases: export all data to JSON, import from JSON.
+//! Export / Import use cases: export all data to JSON, import from JSON,
+//! and person-specific CSV export/import.
 
 use crate::error::AppError;
 use crate::infra::{get_connection, DbPool};
 use chrono::Utc;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -400,4 +402,215 @@ pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, App
         comments: comments_count,
         skipped_duplicates: skipped,
     })
+}
+
+// ─── Person CSV Export / Import ───────────────────────────────────────────────
+
+/// CSV header for person export/import.
+const PERSON_CSV_HEADER: &str = "display_name,email,role,note,is_active";
+
+/// Result of a person CSV import operation.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonImportResult {
+    /// Number of newly created persons.
+    pub created: usize,
+    /// Number of existing persons updated.
+    pub updated: usize,
+    /// Number of rows skipped due to validation errors.
+    pub skipped: usize,
+    /// Per-row error messages (row index is 1-based, excluding header).
+    pub errors: Vec<String>,
+}
+
+/// Export all persons as a UTF-8 CSV string.
+///
+/// Columns: display_name, email, role, note, is_active
+/// Rows are ordered by display_name (case-insensitive).
+pub fn export_persons_csv(pool: &DbPool) -> Result<String, AppError> {
+    let conn = get_connection(pool);
+    let mut stmt = conn
+        .prepare(
+            "SELECT display_name, email, role, note, is_active \
+             FROM persons \
+             ORDER BY display_name COLLATE NOCASE",
+        )
+        .map_err(|e| AppError::Db(e.to_string()))?;
+
+    let mut csv = String::from(PERSON_CSV_HEADER);
+    csv.push('\n');
+
+    let mut rows = stmt.query([]).map_err(|e| AppError::Db(e.to_string()))?;
+    while let Some(row) = rows.next().map_err(|e| AppError::Db(e.to_string()))? {
+        let display_name: String = row.get(0)?;
+        let email: String = row.get(1)?;
+        let role: String = row.get(2)?;
+        let note: String = row.get(3)?;
+        let is_active: i32 = row.get(4)?;
+
+        csv.push_str(&csv_escape(&display_name));
+        csv.push(',');
+        csv.push_str(&csv_escape(&email));
+        csv.push(',');
+        csv.push_str(&csv_escape(&role));
+        csv.push(',');
+        csv.push_str(&csv_escape(&note));
+        csv.push(',');
+        csv.push_str(if is_active != 0 { "true" } else { "false" });
+        csv.push('\n');
+    }
+
+    Ok(csv)
+}
+
+/// Import persons from a UTF-8 CSV string.
+///
+/// Expected header: display_name,email,role,note,is_active
+/// - If a person with the same display_name already exists (case-insensitive), update their fields.
+/// - Otherwise create a new person.
+/// - Rows with an empty display_name are skipped with an error message.
+pub fn import_persons_csv(pool: &DbPool, csv: &str) -> Result<PersonImportResult, AppError> {
+    let mut lines = csv.lines();
+
+    // Validate header
+    let header = lines.next().unwrap_or("").trim();
+    if !header.eq_ignore_ascii_case(PERSON_CSV_HEADER) {
+        return Err(AppError::Validation(format!(
+            "Invalid CSV header. Expected: \"{PERSON_CSV_HEADER}\", got: \"{header}\""
+        )));
+    }
+
+    let conn = get_connection(pool);
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Db(e.to_string()))?;
+
+    let mut created = 0usize;
+    let mut updated = 0usize;
+    let mut skipped = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+
+    for (idx, line) in lines.enumerate() {
+        let row_num = idx + 2; // 1-based, header is row 1
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let fields = parse_csv_row(line);
+        if fields.len() < 5 {
+            errors.push(format!(
+                "Row {row_num}: expected 5 columns, got {}",
+                fields.len()
+            ));
+            skipped += 1;
+            continue;
+        }
+
+        let display_name = fields[0].trim().to_string();
+        if display_name.is_empty() {
+            errors.push(format!("Row {row_num}: display_name is required"));
+            skipped += 1;
+            continue;
+        }
+
+        let email = fields[1].trim().to_string();
+        let role = fields[2].trim().to_string();
+        let note = fields[3].trim().to_string();
+        let is_active = match fields[4].trim().to_lowercase().as_str() {
+            "true" | "1" | "yes" => 1i32,
+            "false" | "0" | "no" => 0i32,
+            other => {
+                errors.push(format!(
+                    "Row {row_num}: invalid is_active value \"{other}\", expected true/false"
+                ));
+                skipped += 1;
+                continue;
+            }
+        };
+
+        let now = Utc::now().to_rfc3339();
+
+        // Check if person already exists by display_name (case-insensitive)
+        let existing_id: Option<String> = tx
+            .query_row(
+                "SELECT id FROM persons WHERE display_name = ?1 COLLATE NOCASE",
+                params![&display_name],
+                |r| r.get(0),
+            )
+            .ok();
+
+        if let Some(id) = existing_id {
+            // Update existing person
+            tx.execute(
+                "UPDATE persons SET email = ?1, role = ?2, note = ?3, is_active = ?4, updated_at = ?5 WHERE id = ?6",
+                params![&email, &role, &note, is_active, &now, &id],
+            )
+            .map_err(|e| AppError::Db(e.to_string()))?;
+            updated += 1;
+        } else {
+            // Create new person
+            let id = Uuid::new_v4().to_string();
+            tx.execute(
+                "INSERT INTO persons (id, display_name, email, role, note, is_active, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+                params![&id, &display_name, &email, &role, &note, is_active, &now],
+            )
+            .map_err(|e| AppError::Db(e.to_string()))?;
+            created += 1;
+        }
+    }
+
+    tx.commit().map_err(|e| AppError::Db(e.to_string()))?;
+
+    Ok(PersonImportResult {
+        created,
+        updated,
+        skipped,
+        errors,
+    })
+}
+
+/// Wrap a CSV field value in quotes if it contains commas, quotes, or newlines.
+fn csv_escape(value: &str) -> String {
+    if value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r') {
+        let escaped = value.replace('"', "\"\"");
+        format!("\"{escaped}\"")
+    } else {
+        value.to_string()
+    }
+}
+
+/// Parse a single CSV row respecting quoted fields.
+fn parse_csv_row(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '"' if in_quotes => {
+                // Check for escaped quote ("")
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    current.push('"');
+                } else {
+                    in_quotes = false;
+                }
+            }
+            '"' => {
+                in_quotes = true;
+            }
+            ',' if !in_quotes => {
+                fields.push(current.clone());
+                current.clear();
+            }
+            other => {
+                current.push(other);
+            }
+        }
+    }
+    fields.push(current);
+    fields
 }

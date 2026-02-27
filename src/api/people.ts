@@ -19,6 +19,13 @@ export interface PersonProjectItem {
   last_involved_at?: string | null;
 }
 
+export interface PersonImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+}
+
 export const peopleApi = {
   list: (onlyActive = true) =>
     invokeCmd<PersonDto[]>('cmd_person_list', { req: { onlyActive } }),
@@ -33,4 +40,7 @@ export const peopleApi = {
     invokeCmd<PersonProjectItem[]>('cmd_person_current_projects', { req: { id: personId } }),
   allProjects: (personId: string) =>
     invokeCmd<PersonProjectItem[]>('cmd_person_all_projects', { req: { id: personId } }),
+  exportCsv: () => invokeCmd<string>('cmd_export_persons_csv', {}),
+  importCsv: (csv: string) =>
+    invokeCmd<PersonImportResult>('cmd_import_persons_csv', { req: { csv } }),
 };

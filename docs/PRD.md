@@ -241,6 +241,19 @@ flowchart LR
   - version 3（新增 `projects.productName`）
   - 导入时需兼容上述版本
 
+### 7.8 人员 CSV 导入/导出
+- **导出**：将所有人员导出为 UTF-8 CSV 文件，列顺序固定为 `display_name, email, role, note, is_active`，按姓名升序排列；字段含逗号/引号/换行时自动加引号转义（RFC 4180）
+- **导入**：从 CSV 文件批量导入/更新人员
+  - 必须包含标题行 `display_name,email,role,note,is_active`，标题不区分大小写
+  - 按 `display_name`（大小写不敏感）匹配：已存在则更新 `email/role/note/is_active`，不存在则新建
+  - `is_active` 接受 `true/false/1/0/yes/no`（不区分大小写）
+  - `display_name` 为空的行跳过并记录错误；列数不足的行同样跳过并记录错误
+  - 行级错误不阻断整批导入，返回 `PersonImportResult`
+  - 导入后前端列表自动刷新
+- **前端交互**：
+  - 导出：点击"导出 CSV"按钮 → 调用 Tauri 保存对话框选择路径 → 写入文件
+  - 导入：点击"导入 CSV"按钮 → 弹出 Modal → 选择文件 → 显示前 5 行预览 → 确认导入 → 展示结果（含行错误列表）
+
 ## 8. 数据模型（SQLite 建议）
 > SQL 注释为英文；复杂约束点用中文补充说明。
 
@@ -842,6 +855,23 @@ type ImportResult = {
   statusHistory: number;
   comments: number;
   skippedDuplicates: number;
+};
+```
+
+**人员 CSV 导出**：`cmd_export_persons_csv` — 返回 UTF-8 CSV 字符串，前端用保存对话框落盘。
+```ts
+// 无请求参数
+type ExportPersonsCsvResp = string; // CSV 文本内容
+```
+
+**人员 CSV 导入**：`cmd_import_persons_csv` — 解析 CSV，按 display_name 做 upsert，返回导入结果。
+```ts
+type ImportPersonsCsvReq = { csv: string };
+type PersonImportResult = {
+  created: number;   // 新建人员数
+  updated: number;   // 更新人员数
+  skipped: number;   // 因错误跳过的行数
+  errors: string[];  // 每行的错误描述（格式："Row N: <reason>"）
 };
 ```
 
