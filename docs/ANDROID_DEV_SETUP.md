@@ -105,6 +105,43 @@ npm run tauri android build
 # APK 在 src-tauri/gen/android/app/build/outputs/apk/
 ```
 
+### 8.1 本地签名 Release 构建
+
+CI 通过环境变量注入签名参数（见 `publish.yml`）。本地如需构建签名 Release APK：
+
+```bash
+# 1. 生成 keystore（仅首次）
+keytool -genkey -v \
+  -keystore ~/projex-release.jks \
+  -alias projex \
+  -keyalg RSA -keysize 2048 -validity 10000
+
+# 2. 设置环境变量
+export ANDROID_KEYSTORE_PATH="$HOME/projex-release.jks"
+export ANDROID_STORE_PASSWORD="<keystore 密码>"
+export ANDROID_KEY_ALIAS="projex"
+export ANDROID_KEY_PASSWORD="<key 密码>"
+
+# 3. 构建
+cd src-tauri/gen/android
+./gradlew assembleRelease
+# APK 在 app/build/outputs/apk/release/app-release.apk
+```
+
+> ⚠️ 务必备份 `projex-release.jks`，丢失后无法更新已发布版本。
+> 不要将 keystore 文件提交到 Git 仓库。
+
+### 8.2 CI 签名配置（GitHub Secrets）
+
+在 `https://github.com/nickdu2009/projex/settings/secrets/actions` 配置：
+
+| Secret | 值来源 |
+|--------|--------|
+| `ANDROID_KEYSTORE_BASE64` | `base64 -i ~/projex-release.jks \| pbcopy` |
+| `ANDROID_STORE_PASSWORD` | 生成 keystore 时设置的密码 |
+| `ANDROID_KEY_ALIAS` | `projex` |
+| `ANDROID_KEY_PASSWORD` | 生成 key 时设置的密码 |
+
 ---
 
 ## 9. 常见问题
