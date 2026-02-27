@@ -85,7 +85,7 @@ jobs:
 
       - name: Clippy lint
         working-directory: src-tauri
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
   # Sync integration/E2E tests against local MinIO
   sync-minio-e2e:

@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 /// Injected S3 credentials for Android (from Keystore).
 /// On desktop the credentials are read from SQLite sync_config directly.
+#[cfg(target_os = "android")]
 pub struct SyncCredentials {
     pub access_key: String,
     pub secret_key: String,
@@ -25,6 +26,7 @@ pub struct SyncCredentials {
 
 /// Validate that endpoint is HTTPS (required on Android).
 /// Returns Ok(()) if endpoint is None (falls back to AWS default) or starts with "https://".
+#[cfg(target_os = "android")]
 pub fn validate_endpoint_https(endpoint: &Option<String>) -> Result<(), AppError> {
     if let Some(ep) = endpoint {
         let ep = ep.trim();
@@ -38,6 +40,7 @@ pub fn validate_endpoint_https(endpoint: &Option<String>) -> Result<(), AppError
 }
 
 /// Outcome of a background sync attempt triggered by Android WorkManager.
+#[cfg(target_os = "android")]
 #[derive(Debug, Serialize)]
 pub struct AndroidSyncResult {
     /// "ok" | "skipped" | "failed"
@@ -51,6 +54,7 @@ pub struct AndroidSyncResult {
 /// - 凭据从 SQLite sync_config 读取（与桌面一致）。
 /// - 使用 data_dir 下的文件锁（sync.lock）互斥后台与前台同步，拿不到锁即跳过。
 /// - HTTPS-only 校验：endpoint 若为 http:// 则直接返回错误。
+#[cfg(target_os = "android")]
 pub async fn android_run_sync_once(pool_ref: &DbPool) -> AndroidSyncResult {
     use fs2::FileExt;
     use std::fs::OpenOptions;
@@ -88,7 +92,12 @@ pub async fn android_run_sync_once(pool_ref: &DbPool) -> AndroidSyncResult {
     if let Some(parent) = lock_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let lock_file = match OpenOptions::new().write(true).create(true).open(&lock_path) {
+    let lock_file = match OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+    {
         Ok(f) => f,
         Err(e) => {
             log::warn!("[android_sync] cannot open lock file: {}", e);
@@ -709,6 +718,7 @@ async fn sync_full_impl(pool_ref: &DbPool) -> Result<String, AppError> {
 }
 
 /// Full sync with externally supplied credentials (Android: from Keystore).
+#[cfg(target_os = "android")]
 async fn sync_full_impl_with_creds(
     pool_ref: &DbPool,
     device_id: String,
@@ -1328,10 +1338,7 @@ pub async fn cmd_sync_import_config(
     let parsed: serde_json::Value = serde_json::from_str(&req.json)
         .map_err(|e| AppError::Validation(format!("INVALID_JSON: {}", e)))?;
 
-    let version = parsed
-        .get("version")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
+    let version = parsed.get("version").and_then(|v| v.as_i64()).unwrap_or(0);
     if version != 1 {
         return Err(AppError::Validation(format!(
             "UNSUPPORTED_VERSION: expected version 1, got {}",
@@ -1350,18 +1357,34 @@ pub async fn cmd_sync_import_config(
             .lock()
             .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
 
-        if let Some(bucket) = cfg.get("bucket").and_then(|v| v.as_str()).filter(|v| !v.trim().is_empty()) {
+        if let Some(bucket) = cfg
+            .get("bucket")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.trim().is_empty())
+        {
             set_config_value(&conn, "s3_bucket", bucket.trim())?;
         }
-        if let Some(endpoint) = cfg.get("endpoint").and_then(|v| v.as_str()).filter(|v| !v.trim().is_empty()) {
+        if let Some(endpoint) = cfg
+            .get("endpoint")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.trim().is_empty())
+        {
             #[cfg(target_os = "android")]
             validate_endpoint_https(&Some(endpoint.trim().to_string()))?;
             set_config_value(&conn, "s3_endpoint", endpoint.trim())?;
         }
-        if let Some(access_key) = cfg.get("access_key").and_then(|v| v.as_str()).filter(|v| !v.trim().is_empty()) {
+        if let Some(access_key) = cfg
+            .get("access_key")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.trim().is_empty())
+        {
             set_config_value(&conn, "s3_access_key", access_key.trim())?;
         }
-        if let Some(secret_key) = cfg.get("secret_key").and_then(|v| v.as_str()).filter(|v| !v.trim().is_empty()) {
+        if let Some(secret_key) = cfg
+            .get("secret_key")
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.trim().is_empty())
+        {
             set_config_value(&conn, "s3_secret_key", secret_key.trim())?;
         }
         if let Some(interval) = cfg
