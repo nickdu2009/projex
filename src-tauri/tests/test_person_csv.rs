@@ -1,6 +1,8 @@
 //! Person CSV export / import integration tests
 
-use app_lib::app::{export_persons_csv, import_persons_csv, person_create, person_get, PersonCreateReq};
+use app_lib::app::{
+    export_persons_csv, import_persons_csv, person_create, person_get, PersonCreateReq,
+};
 use app_lib::infra::db::init_test_db;
 
 // ══════════════════════════════════════════════════════════
@@ -273,7 +275,7 @@ fn import_accepts_all_is_active_variants() {
     let persons = app_lib::app::person_list(&pool, false).unwrap();
     let active: Vec<_> = persons.iter().filter(|p| p.is_active).collect();
     let inactive: Vec<_> = persons.iter().filter(|p| !p.is_active).collect();
-    assert_eq!(active.len(), 3);   // Alice, Carol, Eve
+    assert_eq!(active.len(), 3); // Alice, Carol, Eve
     assert_eq!(inactive.len(), 3); // Bob, Dave, Frank
 }
 
@@ -315,9 +317,21 @@ fn export_import_roundtrip_preserves_all_fields() {
             &pool1,
             PersonCreateReq {
                 display_name: name.to_string(),
-                email: if email.is_empty() { None } else { Some(email.to_string()) },
-                role: if role.is_empty() { None } else { Some(role.to_string()) },
-                note: if note.is_empty() { None } else { Some(note.to_string()) },
+                email: if email.is_empty() {
+                    None
+                } else {
+                    Some(email.to_string())
+                },
+                role: if role.is_empty() {
+                    None
+                } else {
+                    Some(role.to_string())
+                },
+                note: if note.is_empty() {
+                    None
+                } else {
+                    Some(note.to_string())
+                },
             },
         )
         .unwrap();

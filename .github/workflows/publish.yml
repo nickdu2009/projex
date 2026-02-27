@@ -20,6 +20,7 @@ env:
     - **Android**: `projex-release.apk` (requires "Install from unknown sources" enabled)
 
     ### Highlights
+    - People CSV export/import: bulk export the people list to CSV and import/update from CSV with idempotent name-matching
     - S3 sync config export/import: export credentials to JSON for quick setup on a new device
     - Multi-device sync via S3-compatible storage (AWS S3, Cloudflare R2, MinIO, etc.)
     - Android background sync via WorkManager (periodic, ≥15 min interval)
