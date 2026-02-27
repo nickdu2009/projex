@@ -13,6 +13,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
+import { useIsMobile } from '../utils/useIsMobile';
 import { IconDownload, IconUpload, IconCloud, IconCloudUpload, IconRestore, IconEye, IconEyeOff, IconEdit, IconFileText } from '@tabler/icons-react';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -35,6 +36,7 @@ type AppErrorLike = { code?: string; message?: string };
 export function Settings() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -539,26 +541,27 @@ export function Settings() {
             />
           )}
 
-          <Group justify="flex-start" mt="xs">
+          <Group justify="flex-start" mt="xs" wrap="wrap" gap="xs">
             {!syncConfigEditing ? (
               <>
                 <Button
                   variant="light"
                   leftSection={<IconEdit size={16} />}
                   onClick={handleEnterSyncConfigEdit}
+                  fullWidth={isMobile}
                 >
                   {t('common.edit')}
                 </Button>
-                <Button variant="light" onClick={handleTestConnection} loading={testingConnection}>
+                <Button variant="light" onClick={handleTestConnection} loading={testingConnection} fullWidth={isMobile}>
                   {t('settings.sync.testConnection')}
                 </Button>
               </>
             ) : (
               <>
-                <Button variant="light" onClick={handleTestConnection} loading={testingConnection}>
+                <Button variant="light" onClick={handleTestConnection} loading={testingConnection} fullWidth={isMobile}>
                   {t('settings.sync.testConnection')}
                 </Button>
-                <Button variant="subtle" onClick={handleCancelSyncConfigEdit} disabled={saving}>
+                <Button variant="subtle" onClick={handleCancelSyncConfigEdit} disabled={saving} fullWidth={isMobile}>
                   {t('common.cancel')}
                 </Button>
                 <Button
@@ -566,6 +569,7 @@ export function Settings() {
                   gradient={{ from: 'cyan', to: 'blue' }}
                   onClick={handleSaveSyncConfig}
                   loading={saving}
+                  fullWidth={isMobile}
                 >
                   {t('common.save')}
                 </Button>
@@ -583,13 +587,14 @@ export function Settings() {
               {t('settings.sync.operations')}
             </Text>
 
-            <Group>
+            <Group wrap="wrap" gap="xs">
               <Button
                 leftSection={<IconCloud size={18} />}
                 variant="gradient"
                 gradient={{ from: 'teal', to: 'cyan' }}
                 onClick={handleSync}
                 loading={syncing}
+                fullWidth={isMobile}
               >
                 {t('settings.sync.syncNow')}
               </Button>
@@ -600,6 +605,7 @@ export function Settings() {
                 color="blue"
                 onClick={handleCreateSnapshot}
                 loading={snapshotting}
+                fullWidth={isMobile}
               >
                 {t('settings.sync.createSnapshot')}
               </Button>
@@ -610,6 +616,7 @@ export function Settings() {
                 color="orange"
                 onClick={handleRestoreSnapshot}
                 loading={restoring}
+                fullWidth={isMobile}
               >
                 {t('settings.sync.restoreSnapshot')}
               </Button>
@@ -634,13 +641,14 @@ export function Settings() {
             <Text size="xs" c="dimmed" mb="md">
               {t('settings.export.description')}
             </Text>
-            <Group>
+            <Group wrap="wrap" gap="xs">
               <Button
                 leftSection={<IconDownload size={18} />}
                 variant="gradient"
                 gradient={{ from: 'indigo', to: 'violet' }}
                 onClick={handleExport}
                 loading={exporting}
+                fullWidth={isMobile}
               >
                 {t('settings.export.exportButton')}
               </Button>
@@ -650,6 +658,7 @@ export function Settings() {
                 color="teal"
                 onClick={() => fileInputRef.current?.click()}
                 loading={importing}
+                fullWidth={isMobile}
               >
                 {t('settings.export.importButton')}
               </Button>

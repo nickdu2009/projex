@@ -79,27 +79,33 @@ export function SyncStatusBar() {
   return (
     <Group
       justify="space-between"
-      px="md"
+      px={{ base: 'xs', sm: 'md' }}
       py="xs"
+      wrap="nowrap"
       style={{
         borderTop: '1px solid var(--mantine-color-default-border)',
         background: 'rgba(255, 255, 255, 0.6)',
         backdropFilter: 'blur(10px)',
+        overflow: 'hidden',
       }}
     >
-      <Group gap="xs">
+      <Group gap="xs" style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
         {getStatusIcon()}
-        <Text size="sm" c={getStatusColor()}>
+        <Text
+          size="xs"
+          c={getStatusColor()}
+          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        >
           {getStatusText()}
         </Text>
         {state.pendingChanges > 0 && (
-          <Text size="xs" c="orange">
+          <Text size="xs" c="orange" style={{ flexShrink: 0 }}>
             {t('sync.pendingChanges', { count: state.pendingChanges })}
           </Text>
         )}
       </Group>
 
-      <Group gap="xs">
+      <Group gap="xs" style={{ flexShrink: 0 }}>
         <Tooltip label={t('sync.manualSync')}>
           <ActionIcon
             variant="subtle"

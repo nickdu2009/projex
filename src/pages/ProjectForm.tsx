@@ -1,4 +1,5 @@
 import { Button, NumberInput, Paper, Select, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
+import { useIsMobile } from '../utils/useIsMobile';
 import { DatePickerInput } from '@mantine/dates';
 import { IconArrowLeft, IconDeviceFloppy } from '@tabler/icons-react';
 import dayjs from 'dayjs';
@@ -35,6 +36,7 @@ export function ProjectForm() {
   const { t, i18n } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const isEdit = id && id !== 'new';
   const [loading, setLoading] = useState(false);
   const [loadProject, setLoadProject] = useState(true);
@@ -157,7 +159,7 @@ export function ProjectForm() {
   if (loadProject) return <Text size="sm">{t('common.loading')}</Text>;
 
   return (
-    <Stack gap="md" w="100%" maw={960} pb="xl" style={{ alignSelf: 'flex-start' }}>
+    <Stack gap="md" w="100%" maw={isMobile ? '100%' : 960} pb="xl" style={{ alignSelf: 'flex-start' }}>
       <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate('/projects')}>
         {t('common.backToList')}
       </Button>
@@ -234,7 +236,8 @@ export function ProjectForm() {
             variant="gradient"
             gradient={{ from: 'indigo', to: 'violet' }}
             leftSection={<IconDeviceFloppy size={18} />}
-            style={{ alignSelf: 'flex-start' }}
+            fullWidth={isMobile}
+            style={isMobile ? undefined : { alignSelf: 'flex-start' }}
           >
             {isEdit ? t('common.save') : t('common.create')}
           </Button>
