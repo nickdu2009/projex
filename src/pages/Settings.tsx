@@ -223,6 +223,13 @@ export function Settings() {
   };
 
   const handleSaveSyncConfig = async () => {
+    // Validate endpoint: must be empty or start with https://
+    const endpointTrimmed = endpoint.trim();
+    if (endpointTrimmed && !endpointTrimmed.toLowerCase().startsWith('https://')) {
+      showError(t('settings.sync.endpointHttpsRequired'));
+      return;
+    }
+
     setSaving(true);
     try {
       const hasExistingAccessKey = Boolean(syncConfig?.access_key);
@@ -445,6 +452,13 @@ export function Settings() {
             value={endpoint}
             onChange={(e) => setEndpoint(e.currentTarget.value)}
             readOnly={!syncConfigEditing}
+            error={
+              syncConfigEditing &&
+              endpoint.trim() &&
+              !endpoint.trim().toLowerCase().startsWith('https://')
+                ? t('settings.sync.endpointHttpsRequired')
+                : undefined
+            }
           />
 
           <TextInput

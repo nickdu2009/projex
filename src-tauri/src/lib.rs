@@ -1,3 +1,5 @@
+#[cfg(target_os = "android")]
+pub mod android_jni;
 pub mod app;
 mod commands;
 pub mod domain;
@@ -250,6 +252,10 @@ pub fn run() {
                 e
             })?;
             app.manage(pool.clone());
+
+            // Register pool for Android background Worker (JNI path).
+            #[cfg(target_os = "android")]
+            crate::android_jni::register_pool(pool.clone());
 
             // Backend auto-sync scheduler (timer lives in Rust).
             let runtime = SyncRuntime::new();

@@ -207,6 +207,7 @@
   "settings.sync.bucket": "Bucket 名称",
   "settings.sync.endpoint": "Endpoint URL (可选)",
   "settings.sync.endpointDesc": "留空使用 AWS S3，填写自定义 endpoint 支持 R2/MinIO",
+  "settings.sync.endpointHttpsRequired": "Endpoint 必须使用 https://（不允许 http://）",
   "settings.sync.accessKey": "Access Key",
   "settings.sync.accessKeyPlaceholder": "访问密钥",
   "settings.sync.autoSyncInterval": "自动同步间隔（分钟）",

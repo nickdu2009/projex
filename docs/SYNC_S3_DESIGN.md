@@ -400,6 +400,7 @@ sequenceDiagram
 - **完整性保护**：Delta/Snapshot 在应用前执行 SHA-256 校验。
 - **错误可见性**：S3 错误码在命令层映射，前端可读。
 - **凭据保护（展示侧）**：前端默认遮罩，日志侧支持敏感信息脱敏。
+- **Android 基线（MVP）**：Android 端强制 HTTPS-only，并要求凭据使用 Keystore 安全存储（见 `docs/ANDROID_SUPPORT.md`）。
 
 ### 6.2 未实现（规划中）
 

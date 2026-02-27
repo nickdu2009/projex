@@ -207,6 +207,7 @@
   "settings.sync.bucket": "Bucket Name",
   "settings.sync.endpoint": "Endpoint URL (optional)",
   "settings.sync.endpointDesc": "Leave empty for AWS S3, or enter a custom endpoint for R2/MinIO",
+  "settings.sync.endpointHttpsRequired": "Endpoint must use https:// (http:// is not allowed)",
   "settings.sync.accessKey": "Access Key",
   "settings.sync.accessKeyPlaceholder": "Access key",
   "settings.sync.autoSyncInterval": "Auto sync interval (minutes)",

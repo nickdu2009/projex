@@ -5,6 +5,11 @@
 - 生产环境：`AWS S3` 或 `Cloudflare R2`
 - 测试环境：可选 MinIO 自动化测试（集成测试 + 同步端到端测试）
 
+> Android 说明：
+>
+> - Android MVP **仅允许 HTTPS endpoint**，不支持生产环境 `http://`（详见 `docs/ANDROID_SUPPORT.md`）。
+> - 因此本文件的 “MinIO（开发）” 主要面向桌面开发与 CI/E2E；Android 生产建议使用 AWS S3 或 Cloudflare R2。
+
 ---
 
 ## 1. 配置总览

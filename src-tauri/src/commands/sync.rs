@@ -16,6 +16,182 @@ use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
+/// Injected S3 credentials for Android (from Keystore).
+/// On desktop the credentials are read from SQLite sync_config directly.
+pub struct SyncCredentials {
+    pub access_key: String,
+    pub secret_key: String,
+}
+
+/// Validate that endpoint is HTTPS (required on Android).
+/// Returns Ok(()) if endpoint is None (falls back to AWS default) or starts with "https://".
+pub fn validate_endpoint_https(endpoint: &Option<String>) -> Result<(), AppError> {
+    if let Some(ep) = endpoint {
+        let ep = ep.trim();
+        if !ep.is_empty() && !ep.to_ascii_lowercase().starts_with("https://") {
+            return Err(AppError::Validation(
+                "ENDPOINT_NOT_HTTPS: endpoint must use https:// on Android".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Outcome of a background sync attempt triggered by Android WorkManager.
+#[derive(Debug, Serialize)]
+pub struct AndroidSyncResult {
+    /// "ok" | "skipped" | "failed"
+    pub status: String,
+    pub message: String,
+}
+
+/// Android background sync entry point called from JNI.
+///
+/// 设计要点：
+/// - 凭据从 SQLite sync_config 读取（与桌面一致）。
+/// - 使用 data_dir 下的文件锁（sync.lock）互斥后台与前台同步，拿不到锁即跳过。
+/// - HTTPS-only 校验：endpoint 若为 http:// 则直接返回错误。
+pub async fn android_run_sync_once(pool_ref: &DbPool) -> AndroidSyncResult {
+    use fs2::FileExt;
+    use std::fs::OpenOptions;
+
+    // 1. Check sync_enabled in SQLite
+    let sync_enabled = {
+        match pool_ref.0.lock() {
+            Ok(conn) => {
+                get_config_value(&conn, "sync_enabled")
+                    .ok()
+                    .as_deref()
+                    .unwrap_or("0")
+                    .trim()
+                    == "1"
+            }
+            Err(_) => false,
+        }
+    };
+    if !sync_enabled {
+        log::info!("[android_sync] sync_enabled=0, skipping");
+        return AndroidSyncResult {
+            status: "skipped".to_string(),
+            message: "sync disabled".to_string(),
+        };
+    }
+
+    // 3. Acquire file lock (sync.lock) for cross-process mutual exclusion.
+    //    data_dir is derived from the same dirs crate path as the Tauri app.
+    let lock_path = {
+        let base = dirs::data_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+        base.join("com.nickdu.projex")
+            .join("default")
+            .join("sync.lock")
+    };
+    if let Some(parent) = lock_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let lock_file = match OpenOptions::new().write(true).create(true).open(&lock_path) {
+        Ok(f) => f,
+        Err(e) => {
+            log::warn!("[android_sync] cannot open lock file: {}", e);
+            return AndroidSyncResult {
+                status: "skipped".to_string(),
+                message: format!("lock file unavailable: {}", e),
+            };
+        }
+    };
+    if lock_file.try_lock_exclusive().is_err() {
+        log::info!("[android_sync] lock held by foreground, skipping this cycle");
+        return AndroidSyncResult {
+            status: "skipped".to_string(),
+            message: "sync already running".to_string(),
+        };
+    }
+
+    // 4. Read config from SQLite (including credentials, same as desktop)
+    let (device_id_opt, bucket_opt, endpoint, access_key, secret_key) = {
+        match pool_ref.0.lock() {
+            Ok(conn) => {
+                let device_id = get_config_value(&conn, "device_id").ok();
+                let bucket = get_config_value(&conn, "s3_bucket").ok();
+                let endpoint = get_config_value(&conn, "s3_endpoint").ok();
+                let access_key = get_config_value(&conn, "s3_access_key").ok();
+                let secret_key = get_config_value(&conn, "s3_secret_key").ok();
+                (device_id, bucket, endpoint, access_key, secret_key)
+            }
+            Err(_) => {
+                return AndroidSyncResult {
+                    status: "failed".to_string(),
+                    message: "db lock poisoned".to_string(),
+                };
+            }
+        }
+    };
+
+    let device_id = match device_id_opt {
+        Some(v) if !v.trim().is_empty() => v,
+        _ => {
+            return AndroidSyncResult {
+                status: "failed".to_string(),
+                message: "device_id not configured".to_string(),
+            };
+        }
+    };
+    let bucket = match bucket_opt {
+        Some(v) if !v.trim().is_empty() => v,
+        _ => {
+            return AndroidSyncResult {
+                status: "failed".to_string(),
+                message: "s3_bucket not configured".to_string(),
+            };
+        }
+    };
+    let (access_key, secret_key) = match (access_key, secret_key) {
+        (Some(ak), Some(sk)) if !ak.trim().is_empty() && !sk.trim().is_empty() => (ak, sk),
+        _ => {
+            return AndroidSyncResult {
+                status: "skipped".to_string(),
+                message: "credentials not configured".to_string(),
+            };
+        }
+    };
+
+    // 5. HTTPS-only enforcement for Android
+    if let Err(e) = validate_endpoint_https(&endpoint) {
+        log::error!("[android_sync] {}", e);
+        if let Ok(conn) = pool_ref.0.lock() {
+            let _ = set_config_value(&conn, "last_sync_error", &e.to_string());
+        }
+        return AndroidSyncResult {
+            status: "failed".to_string(),
+            message: e.to_string(),
+        };
+    }
+
+    // 6. Run the actual sync pipeline (credentials from SQLite)
+    log::info!("[android_sync] starting sync for device={}", device_id);
+    let result = sync_full_impl_with_creds(
+        pool_ref,
+        device_id,
+        bucket,
+        endpoint,
+        SyncCredentials {
+            access_key,
+            secret_key,
+        },
+    )
+    .await;
+
+    match result {
+        Ok(msg) => AndroidSyncResult {
+            status: "ok".to_string(),
+            message: msg,
+        },
+        Err(e) => AndroidSyncResult {
+            status: "failed".to_string(),
+            message: e.to_string(),
+        },
+    }
+}
+
 #[derive(Clone)]
 pub struct SyncRuntime {
     inner: Arc<SyncRuntimeInner>,
@@ -222,8 +398,13 @@ pub async fn cmd_sync_update_config(
         set_config_value(&conn, "sync_enabled", if req.enabled { "1" } else { "0" })?;
         set_config_value(&conn, "s3_bucket", &req.bucket)?;
 
-        if let Some(endpoint) = req.endpoint {
-            set_config_value(&conn, "s3_endpoint", &endpoint)?;
+        if let Some(ref endpoint) = req.endpoint {
+            // On Android, reject http:// endpoints at the Rust layer.
+            // This is the authoritative guard; the frontend also validates.
+            #[cfg(target_os = "android")]
+            validate_endpoint_https(&Some(endpoint.clone()))?;
+
+            set_config_value(&conn, "s3_endpoint", endpoint)?;
         }
 
         // Security/UX: do not overwrite existing credentials with empty strings.
@@ -511,6 +692,62 @@ async fn sync_full_impl(pool_ref: &DbPool) -> Result<String, AppError> {
             (device_id, bucket, endpoint, access_key, secret_key)
         };
 
+        sync_full_pipeline(
+            pool_ref, device_id, bucket, endpoint, access_key, secret_key,
+        )
+        .await
+    })
+    .await;
+
+    if let Err(e) = &res {
+        if let Ok(conn) = pool_ref.0.lock() {
+            let _ = set_config_value(&conn, "last_sync_error", &e.to_string());
+        }
+    }
+
+    res
+}
+
+/// Full sync with externally supplied credentials (Android: from Keystore).
+async fn sync_full_impl_with_creds(
+    pool_ref: &DbPool,
+    device_id: String,
+    bucket: String,
+    endpoint: Option<String>,
+    creds: SyncCredentials,
+) -> Result<String, AppError> {
+    let res = sync_full_pipeline(
+        pool_ref,
+        device_id,
+        bucket,
+        endpoint,
+        creds.access_key,
+        creds.secret_key,
+    )
+    .await;
+
+    if let Err(e) = &res {
+        if let Ok(conn) = pool_ref.0.lock() {
+            let _ = set_config_value(&conn, "last_sync_error", &e.to_string());
+        }
+    }
+
+    res
+}
+
+/// Core sync pipeline: upload local delta, bootstrap snapshot, download & apply remote deltas.
+/// Called by both the desktop path (credentials from SQLite) and the Android path (credentials injected).
+async fn sync_full_pipeline(
+    pool_ref: &DbPool,
+    device_id: String,
+    bucket: String,
+    endpoint: Option<String>,
+    access_key: String,
+    secret_key: String,
+) -> Result<String, AppError> {
+    let res: Result<String, AppError> = (async {
+        log::info!("Starting full sync...");
+
         // Create S3 client
         let s3_client = if let Some(endpoint_url) = endpoint {
             S3SyncClient::new_with_endpoint(
@@ -719,13 +956,6 @@ async fn sync_full_impl(pool_ref: &DbPool) -> Result<String, AppError> {
         Ok("Sync completed".to_string())
     })
     .await;
-
-    if let Err(e) = &res {
-        // Best-effort error recording for UI.
-        if let Ok(conn) = pool_ref.0.lock() {
-            let _ = set_config_value(&conn, "last_sync_error", &e.to_string());
-        }
-    }
 
     res
 }
