@@ -188,7 +188,9 @@ jobs:
   #   ANDROID_KEY_ALIAS         — key alias (e.g. "projex")
   #   ANDROID_KEY_PASSWORD      — key password
   publish-android:
-    needs: pre-publish-ci
+    # Must run after publish-tauri so the GitHub Release (draft) already exists
+    # before we attempt to upload the APK asset.
+    needs: [pre-publish-ci, publish-tauri]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -278,12 +280,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.ref_name }}"
-          # For workflow_dispatch without a tag, use the latest draft release.
-          if [ -z "$TAG" ] || [ "$TAG" = "refs/heads/main" ]; then
-            TAG=$(gh release list --repo "${{ github.repository }}" \
-                    --limit 1 --json tagName --jq '.[0].tagName')
-          fi
+          # Derive the tag from Cargo.toml version (same logic as tauri-action: v__VERSION__).
+          # This works for both tag-push and workflow_dispatch triggers.
+          VERSION=$(grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          TAG="v${VERSION}"
+          echo "Uploading APK to release: $TAG"
           gh release upload "$TAG" projex-release.apk \
             --repo "${{ github.repository }}" \
             --clobber
