@@ -150,11 +150,18 @@ fn reject_wipe_disables_sync_and_clears_pending() {
 
     // After reject: sync_enabled must be "0".
     let sync_enabled = get_config_value(&pool, "sync_enabled");
-    assert_eq!(sync_enabled.as_deref(), Some("0"), "sync_enabled must be 0 after reject");
+    assert_eq!(
+        sync_enabled.as_deref(),
+        Some("0"),
+        "sync_enabled must be 0 after reject"
+    );
 
     // After reject: pending_wipe must be gone.
     let pending = get_config_value(&pool, "pending_wipe");
-    assert!(pending.is_none(), "pending_wipe must be cleared after reject");
+    assert!(
+        pending.is_none(),
+        "pending_wipe must be cleared after reject"
+    );
 }
 
 // ── reject wipe: wipe_id mismatch is caught before applying changes ────────────
@@ -198,5 +205,9 @@ fn reject_wipe_with_wrong_wipe_id_does_not_disable_sync() {
 
     // sync_enabled must remain "1" since we returned early.
     let sync_enabled = get_config_value(&pool, "sync_enabled");
-    assert_eq!(sync_enabled.as_deref(), Some("1"), "sync_enabled must not change on wipe_id mismatch");
+    assert_eq!(
+        sync_enabled.as_deref(),
+        Some("1"),
+        "sync_enabled must not change on wipe_id mismatch"
+    );
 }

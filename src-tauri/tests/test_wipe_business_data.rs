@@ -24,9 +24,7 @@ fn count_rows(pool: &app_lib::infra::db::DbPool, table: &str) -> i64 {
 }
 
 /// Seed a minimal dataset: 1 partner, 1 person, 1 project, 1 assignment.
-fn seed_minimal(
-    pool: &app_lib::infra::db::DbPool,
-) -> (String, String, String) {
+fn seed_minimal(pool: &app_lib::infra::db::DbPool) -> (String, String, String) {
     let partner = partner_create(
         pool,
         PartnerCreateReq {
@@ -99,7 +97,10 @@ fn wipe_fails_when_sync_disabled() {
     let err = wipe_business_data(&pool).unwrap_err();
     assert_eq!(err.code(), "VALIDATION_ERROR");
     let msg = format!("{err:?}");
-    assert!(msg.contains("SYNC_DISABLED"), "expected SYNC_DISABLED in: {msg}");
+    assert!(
+        msg.contains("SYNC_DISABLED"),
+        "expected SYNC_DISABLED in: {msg}"
+    );
 }
 
 #[test]
@@ -130,23 +131,69 @@ fn wipe_clears_all_business_tables_when_sync_enabled() {
     seed_minimal(&pool);
 
     // Verify data exists before wipe.
-    assert!(count_rows(&pool, "partners") > 0, "partners should have rows before wipe");
-    assert!(count_rows(&pool, "persons") > 0, "persons should have rows before wipe");
-    assert!(count_rows(&pool, "projects") > 0, "projects should have rows before wipe");
-    assert!(count_rows(&pool, "assignments") > 0, "assignments should have rows before wipe");
-    assert!(count_rows(&pool, "project_tags") > 0, "project_tags should have rows before wipe");
-    assert!(count_rows(&pool, "status_history") > 0, "status_history should have rows before wipe");
+    assert!(
+        count_rows(&pool, "partners") > 0,
+        "partners should have rows before wipe"
+    );
+    assert!(
+        count_rows(&pool, "persons") > 0,
+        "persons should have rows before wipe"
+    );
+    assert!(
+        count_rows(&pool, "projects") > 0,
+        "projects should have rows before wipe"
+    );
+    assert!(
+        count_rows(&pool, "assignments") > 0,
+        "assignments should have rows before wipe"
+    );
+    assert!(
+        count_rows(&pool, "project_tags") > 0,
+        "project_tags should have rows before wipe"
+    );
+    assert!(
+        count_rows(&pool, "status_history") > 0,
+        "status_history should have rows before wipe"
+    );
 
     let result = wipe_business_data(&pool).unwrap();
 
     // All business tables must be empty.
-    assert_eq!(count_rows(&pool, "partners"), 0, "partners should be empty after wipe");
-    assert_eq!(count_rows(&pool, "persons"), 0, "persons should be empty after wipe");
-    assert_eq!(count_rows(&pool, "projects"), 0, "projects should be empty after wipe");
-    assert_eq!(count_rows(&pool, "assignments"), 0, "assignments should be empty after wipe");
-    assert_eq!(count_rows(&pool, "project_tags"), 0, "project_tags should be empty after wipe");
-    assert_eq!(count_rows(&pool, "status_history"), 0, "status_history should be empty after wipe");
-    assert_eq!(count_rows(&pool, "project_comments"), 0, "project_comments should be empty after wipe");
+    assert_eq!(
+        count_rows(&pool, "partners"),
+        0,
+        "partners should be empty after wipe"
+    );
+    assert_eq!(
+        count_rows(&pool, "persons"),
+        0,
+        "persons should be empty after wipe"
+    );
+    assert_eq!(
+        count_rows(&pool, "projects"),
+        0,
+        "projects should be empty after wipe"
+    );
+    assert_eq!(
+        count_rows(&pool, "assignments"),
+        0,
+        "assignments should be empty after wipe"
+    );
+    assert_eq!(
+        count_rows(&pool, "project_tags"),
+        0,
+        "project_tags should be empty after wipe"
+    );
+    assert_eq!(
+        count_rows(&pool, "status_history"),
+        0,
+        "status_history should be empty after wipe"
+    );
+    assert_eq!(
+        count_rows(&pool, "project_comments"),
+        0,
+        "project_comments should be empty after wipe"
+    );
 
     // WipeResult counts must match.
     assert!(result.deleted_partners > 0);

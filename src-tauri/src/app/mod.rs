@@ -16,8 +16,8 @@ pub use comment::{
     CommentDto, CommentUpdateReq,
 };
 pub use data_transfer::{
-    export_json_string, export_persons_csv, import_json_string, import_persons_csv, wipe_business_data,
-    ImportResult, PersonImportResult, WipeResult,
+    export_json_string, export_persons_csv, import_json_string, import_persons_csv,
+    wipe_business_data, ImportResult, PersonImportResult, WipeResult,
 };
 pub use partner::{
     partner_create, partner_deactivate, partner_get, partner_list, partner_projects,

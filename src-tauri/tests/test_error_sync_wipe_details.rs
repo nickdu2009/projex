@@ -34,18 +34,28 @@ fn sync_wipe_confirm_required_details_contains_all_fields() {
     assert_eq!(dto.code, "SYNC_WIPE_CONFIRM_REQUIRED");
     assert!(!dto.message.is_empty());
 
-    let details = dto.details.expect("details must be present for SyncWipeConfirmRequired");
+    let details = dto
+        .details
+        .expect("details must be present for SyncWipeConfirmRequired");
 
     // Frontend depends on these camelCase keys.
     assert_eq!(details["wipeId"], pending.wipe_id, "wipeId must match");
-    assert_eq!(details["sourceDeviceId"], pending.source_device_id, "sourceDeviceId must match");
-    assert_eq!(details["deltaKey"], pending.delta_key, "deltaKey must match");
     assert_eq!(
-        details["sourceTimestamp"],
-        pending.source_timestamp,
+        details["sourceDeviceId"], pending.source_device_id,
+        "sourceDeviceId must match"
+    );
+    assert_eq!(
+        details["deltaKey"], pending.delta_key,
+        "deltaKey must match"
+    );
+    assert_eq!(
+        details["sourceTimestamp"], pending.source_timestamp,
         "sourceTimestamp must match"
     );
-    assert_eq!(details["createdAt"], pending.created_at, "createdAt must match");
+    assert_eq!(
+        details["createdAt"], pending.created_at,
+        "createdAt must match"
+    );
 }
 
 // ── Serialize impl (used by Tauri IPC) ───────────────────────────────────────

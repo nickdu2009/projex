@@ -685,7 +685,10 @@ pub struct SyncRejectWipeReq {
 }
 
 #[tauri::command]
-pub fn cmd_sync_reject_wipe(pool: State<'_, DbPool>, req: SyncRejectWipeReq) -> Result<String, AppError> {
+pub fn cmd_sync_reject_wipe(
+    pool: State<'_, DbPool>,
+    req: SyncRejectWipeReq,
+) -> Result<String, AppError> {
     let conn = pool
         .inner()
         .0
@@ -768,22 +771,27 @@ async fn confirm_pending_wipe_and_sync(
     let delta_engine = DeltaSyncEngine::new(pool_ref, device_id.clone());
     let before_apply_sync_meta_id = delta_engine.current_max_sync_metadata_id()?;
     delta_engine.apply_delta(&delta)?;
-    let _marked = delta_engine.mark_remote_applied_operations_synced(
-        before_apply_sync_meta_id,
-        &delta.operations,
-    )?;
+    let _marked = delta_engine
+        .mark_remote_applied_operations_synced(before_apply_sync_meta_id, &delta.operations)?;
 
     {
         let conn = pool_ref
             .0
             .lock()
             .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
-        set_remote_delta_cursor_timestamp(&conn, &pending.source_device_id, pending.source_timestamp)?;
+        set_remote_delta_cursor_timestamp(
+            &conn,
+            &pending.source_device_id,
+            pending.source_timestamp,
+        )?;
         clear_pending_wipe(&conn)?;
     }
 
     // Continue with a normal full sync now that wipe has been applied and cursor advanced.
-    sync_full_pipeline(pool_ref, device_id, bucket, endpoint, access_key, secret_key).await
+    sync_full_pipeline(
+        pool_ref, device_id, bucket, endpoint, access_key, secret_key,
+    )
+    .await
 }
 
 /// Perform full sync (upload + download)
