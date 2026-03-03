@@ -254,6 +254,21 @@ flowchart LR
   - 导出：点击"导出 CSV"按钮 → 调用 Tauri 保存对话框选择路径 → 写入文件
   - 导入：点击"导入 CSV"按钮 → 弹出 Modal → 选择文件 → 显示前 5 行预览 → 确认导入 → 展示结果（含行错误列表）
 
+### 7.9 清空数据（Danger Zone）
+- **目的**：快速清空本机全部业务数据，便于“重新开始”或演示环境重置。
+- **清空范围（仅业务数据）**：
+  - `persons / partners / projects / assignments / status_history / project_tags / project_comments`
+  - **保留**：`sync_config / sync_metadata / vector_clocks / schema_migrations`（用于保持设备标识与同步能力）
+- **二次确认（强制）**：
+  - UI 必须先提醒用户**导出备份**（提供一键导出入口）
+  - 然后要求输入确认短语 `CLEAR` 才能执行
+- **同步传播与其它设备确认（关键约束）**：
+  - 当 `sync_enabled=1` 时，清空操作会写入一个特殊控制操作 `WIPE_INTENT`（随同后续大量 `DELETE` 变更一起上传到 S3）
+  - **其它客户端**在同步下载到包含 `WIPE_INTENT` 的 delta 时，必须进入“待确认”状态：
+    - 在用户确认前 **不得自动清空**
+    - 同步必须被阻塞，并返回稳定错误码 `SYNC_WIPE_CONFIRM_REQUIRED`
+  - 若用户**不同意清空**：该设备必须提供“断开同步”出口（例如关闭 `sync_enabled`），避免与远端历史分叉造成不可控冲突
+
 ## 8. 数据模型（SQLite 建议）
 > SQL 注释为英文；复杂约束点用中文补充说明。
 

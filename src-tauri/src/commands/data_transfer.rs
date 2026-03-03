@@ -1,8 +1,8 @@
 //! Export / Import command handlers.
 
 use crate::app::{
-    export_json_string, export_persons_csv, import_json_string, import_persons_csv, ImportResult,
-    PersonImportResult,
+    export_json_string, export_persons_csv, import_json_string, import_persons_csv, wipe_business_data,
+    ImportResult, PersonImportResult, WipeResult,
 };
 use crate::error::AppError;
 use crate::infra::DbPool;
@@ -52,4 +52,9 @@ pub fn cmd_import_persons_csv(
     req: ImportPersonsCsvReq,
 ) -> Result<PersonImportResult, AppError> {
     import_persons_csv(&pool, &req.csv)
+}
+
+#[tauri::command]
+pub fn cmd_wipe_business_data(pool: State<DbPool>) -> Result<WipeResult, AppError> {
+    wipe_business_data(&pool)
 }

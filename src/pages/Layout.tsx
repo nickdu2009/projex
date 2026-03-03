@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '../utils/useIsMobile';
 import { SyncStatusBar } from '../components/SyncStatusBar';
+import { SyncWipeGate } from '../components/SyncWipeGate';
 import { syncManager } from '../sync/SyncManager';
 
 const NAV_ITEMS = [
@@ -30,18 +31,25 @@ export function Layout() {
 
   useEffect(() => {
     let cancelled = false;
-    syncManager
-      .getConfig()
-      .then((cfg) => {
-        if (cancelled) return;
-        setSyncEnabled(cfg.enabled);
-        if (cfg.enabled) {
-          syncManager.initialize();
-        }
-      })
-      .catch(() => {});
+    const refresh = () => {
+      syncManager
+        .getConfig()
+        .then((cfg) => {
+          if (cancelled) return;
+          setSyncEnabled(cfg.enabled);
+          if (cfg.enabled) {
+            syncManager.initialize();
+          }
+        })
+        .catch(() => {});
+    };
+    refresh();
+
+    const onSyncConfigChanged = () => refresh();
+    window.addEventListener('projex:sync-config-changed', onSyncConfigChanged);
     return () => {
       cancelled = true;
+      window.removeEventListener('projex:sync-config-changed', onSyncConfigChanged);
     };
     // Refresh config when route changes so Settings toggles take effect.
   }, [location.pathname]);
@@ -145,6 +153,7 @@ export function Layout() {
         )}
 
         <AppShell.Main>
+          <SyncWipeGate enabled={syncEnabled} />
           <Outlet />
         </AppShell.Main>
 

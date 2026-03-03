@@ -1,7 +1,17 @@
 //! Stable error codes for frontend.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingWipeInfo {
+    pub wipe_id: String,
+    pub source_device_id: String,
+    pub delta_key: String,
+    pub source_timestamp: i64,
+    pub created_at: String,
+}
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -41,6 +51,9 @@ pub enum AppError {
     #[error("Sync error: {0}")]
     Sync(String),
 
+    #[error("Sync blocked: wipe confirmation required")]
+    SyncWipeConfirmRequired(PendingWipeInfo),
+
     #[error("Log file error: {0}")]
     LogFile(String),
 
@@ -63,16 +76,21 @@ impl AppError {
             Self::SyncConfigIncomplete => "SYNC_CONFIG_INCOMPLETE",
             Self::SyncBucketNotOwned => "SYNC_BUCKET_NOT_OWNED",
             Self::Sync(_) => "SYNC_ERROR",
+            Self::SyncWipeConfirmRequired(_) => "SYNC_WIPE_CONFIRM_REQUIRED",
             Self::LogFile(_) => "LOG_INVALID_FILE",
             Self::LogIo(_) => "LOG_IO_ERROR",
         }
     }
 
     pub fn to_serde(&self) -> AppErrorDto {
+        let details = match self {
+            Self::SyncWipeConfirmRequired(info) => serde_json::to_value(info).ok(),
+            _ => None,
+        };
         AppErrorDto {
             code: self.code().to_string(),
             message: self.to_string(),
-            details: None,
+            details,
         }
     }
 }

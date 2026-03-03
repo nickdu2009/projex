@@ -2,8 +2,10 @@ import {
   ActionIcon,
   Badge,
   Button,
+  Checkbox,
   Divider,
   Group,
+  Modal,
   NumberInput,
   Paper,
   SegmentedControl,
@@ -14,7 +16,7 @@ import {
   Title,
 } from '@mantine/core';
 import { useIsMobile } from '../utils/useIsMobile';
-import { IconDownload, IconUpload, IconCloud, IconCloudUpload, IconRestore, IconEye, IconEyeOff, IconEdit, IconFileText, IconDatabaseExport, IconDatabaseImport } from '@tabler/icons-react';
+import { IconDownload, IconUpload, IconCloud, IconCloudUpload, IconRestore, IconEye, IconEyeOff, IconEdit, IconFileText, IconDatabaseExport, IconDatabaseImport, IconTrashX } from '@tabler/icons-react';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -68,6 +70,12 @@ export function Settings() {
   const [exportingConfig, setExportingConfig] = useState(false);
   const [importingConfig, setImportingConfig] = useState(false);
   const syncConfigFileInputRef = useRef<HTMLInputElement>(null);
+  const [wipeBackupOpened, setWipeBackupOpened] = useState(false);
+  const [wipeConfirmOpened, setWipeConfirmOpened] = useState(false);
+  const [wipeBackedUp, setWipeBackedUp] = useState(false);
+  const [wipePhrase, setWipePhrase] = useState('');
+  const [wiping, setWiping] = useState(false);
+  const wipeConfirmPhrase = 'CLEAR';
 
   const getErrorCodeAndMessage = (e: unknown): { code?: string; message: string } => {
     // Tauri invoke errors may come in different shapes across versions:
@@ -98,6 +106,12 @@ export function Settings() {
   useEffect(() => {
     loadSyncConfig();
     loadSyncStatus();
+
+    const onSyncConfigChanged = () => loadSyncConfig();
+    window.addEventListener('projex:sync-config-changed', onSyncConfigChanged);
+    return () => {
+      window.removeEventListener('projex:sync-config-changed', onSyncConfigChanged);
+    };
   }, []);
 
   useEffect(() => {
@@ -445,6 +459,45 @@ export function Settings() {
     } finally {
       setRestoring(false);
       await loadSyncStatus();
+    }
+  };
+
+  const handleOpenWipe = () => {
+    setWipeBackedUp(false);
+    setWipePhrase('');
+    setWipeBackupOpened(true);
+  };
+
+  const handleRunWipe = async () => {
+    if (wipePhrase.trim() !== wipeConfirmPhrase) return;
+    setWiping(true);
+    try {
+      if (!syncEnabled) {
+        showError(t('settings.dangerZone.syncRequired'));
+        return;
+      }
+
+      const result = await exportApi.wipeBusinessData();
+      showSuccess(
+        t('settings.dangerZone.wipeSuccess', {
+          projects: result.deleted_projects,
+          persons: result.deleted_persons,
+          partners: result.deleted_partners,
+        }),
+      );
+
+      invalidatePartners();
+      invalidatePersons();
+      invalidateTags();
+
+      // Propagate wipe intent + deletes to S3 (other devices will require confirmation).
+      await syncManager.sync();
+    } catch (e: unknown) {
+      showError((e as { message?: string })?.message ?? t('settings.dangerZone.wipeFailed'));
+    } finally {
+      setWiping(false);
+      setWipeConfirmOpened(false);
+      setWipeBackupOpened(false);
     }
   };
 
@@ -810,6 +863,106 @@ export function Settings() {
           </Button>
         </Stack>
       </Paper>
+
+      <Divider />
+
+      {/* Danger Zone */}
+      <Paper>
+        <Stack gap="xs">
+          <Text size="sm" fw={500} c="red">
+            {t('settings.dangerZone.title')}
+          </Text>
+          <Text size="xs" c="dimmed">
+            {t('settings.dangerZone.description')}
+          </Text>
+          <Button
+            leftSection={<IconTrashX size={18} />}
+            variant="light"
+            color="red"
+            onClick={handleOpenWipe}
+            fullWidth={isMobile}
+          >
+            {t('settings.dangerZone.wipeButton')}
+          </Button>
+        </Stack>
+      </Paper>
+
+      <Modal
+        opened={wipeBackupOpened}
+        onClose={() => setWipeBackupOpened(false)}
+        title={t('settings.dangerZone.backupTitle')}
+        centered
+        size={isMobile ? '100%' : 'sm'}
+        fullScreen={isMobile}
+      >
+        <Stack>
+          <Text size="sm">{t('settings.dangerZone.backupReminder')}</Text>
+          <Button
+            variant="light"
+            leftSection={<IconDownload size={18} />}
+            onClick={handleExport}
+            loading={exporting}
+            fullWidth={isMobile}
+          >
+            {t('settings.dangerZone.backupNow')}
+          </Button>
+          <Checkbox
+            checked={wipeBackedUp}
+            onChange={(e) => setWipeBackedUp(e.currentTarget.checked)}
+            label={t('settings.dangerZone.backupAck')}
+          />
+          <Group justify={isMobile ? 'stretch' : 'flex-end'} wrap="wrap">
+            <Button variant="subtle" onClick={() => setWipeBackupOpened(false)} disabled={exporting} fullWidth={isMobile}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              color="red"
+              onClick={() => {
+                if (!wipeBackedUp) return;
+                setWipeBackupOpened(false);
+                setWipeConfirmOpened(true);
+              }}
+              disabled={!wipeBackedUp}
+              fullWidth={isMobile}
+            >
+              {t('common.continue')}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={wipeConfirmOpened}
+        onClose={() => setWipeConfirmOpened(false)}
+        title={t('settings.dangerZone.confirmTitle')}
+        centered
+        size={isMobile ? '100%' : 'sm'}
+        fullScreen={isMobile}
+      >
+        <Stack>
+          <Text size="sm">{t('settings.dangerZone.confirmMessage')}</Text>
+          <TextInput
+            label={t('settings.dangerZone.phraseLabel')}
+            value={wipePhrase}
+            onChange={(e) => setWipePhrase(e.currentTarget.value)}
+            placeholder={wipeConfirmPhrase}
+          />
+          <Group justify={isMobile ? 'stretch' : 'flex-end'} wrap="wrap">
+            <Button variant="subtle" onClick={() => setWipeConfirmOpened(false)} disabled={wiping} fullWidth={isMobile}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              color="red"
+              onClick={handleRunWipe}
+              loading={wiping}
+              disabled={wipePhrase.trim() !== wipeConfirmPhrase}
+              fullWidth={isMobile}
+            >
+              {t('settings.dangerZone.confirmButton')}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       <Divider />
 

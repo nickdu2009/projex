@@ -1,6 +1,6 @@
 //! Tauri commands for sync operations
 
-use crate::error::AppError;
+use crate::error::{AppError, PendingWipeInfo};
 use crate::infra::DbPool;
 use crate::sync::{Delta, DeltaSyncEngine, S3ObjectSummary, S3SyncClient, SnapshotManager};
 use aws_sdk_s3::error::ProvideErrorMetadata;
@@ -15,6 +15,8 @@ use tokio::sync::Mutex as AsyncMutex;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
+
+const PENDING_WIPE_KEY: &str = "pending_wipe";
 
 /// Injected S3 credentials for Android (from Keystore).
 /// On desktop the credentials are read from SQLite sync_config directly.
@@ -646,6 +648,144 @@ pub fn cmd_sync_get_status(
     })
 }
 
+#[tauri::command]
+pub fn cmd_sync_get_pending_wipe(pool: State<DbPool>) -> Result<Option<PendingWipeInfo>, AppError> {
+    let conn = pool
+        .inner()
+        .0
+        .lock()
+        .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+    get_pending_wipe_info(&conn)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncConfirmWipeReq {
+    pub wipe_id: String,
+    pub phrase: String,
+}
+
+#[tauri::command]
+pub async fn cmd_sync_confirm_wipe(
+    pool: State<'_, DbPool>,
+    runtime: State<'_, SyncRuntime>,
+    req: SyncConfirmWipeReq,
+) -> Result<String, AppError> {
+    let _lock = runtime.inner.sync_lock.lock().await;
+    runtime.inner.is_syncing.store(true, Ordering::Relaxed);
+    let res = confirm_pending_wipe_and_sync(pool.inner(), req).await;
+    runtime.inner.is_syncing.store(false, Ordering::Relaxed);
+    res
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncRejectWipeReq {
+    pub wipe_id: String,
+}
+
+#[tauri::command]
+pub fn cmd_sync_reject_wipe(pool: State<'_, DbPool>, req: SyncRejectWipeReq) -> Result<String, AppError> {
+    let conn = pool
+        .inner()
+        .0
+        .lock()
+        .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+    let pending = get_pending_wipe_info(&conn)?.ok_or_else(|| {
+        AppError::Validation("NO_PENDING_WIPE: there is no pending wipe to reject".to_string())
+    })?;
+    if pending.wipe_id != req.wipe_id {
+        return Err(AppError::Validation("WIPE_ID_MISMATCH".to_string()));
+    }
+
+    set_config_value(&conn, "sync_enabled", "0")?;
+    clear_pending_wipe(&conn)?;
+    Ok("Sync disabled (wipe rejected)".to_string())
+}
+
+async fn confirm_pending_wipe_and_sync(
+    pool_ref: &DbPool,
+    req: SyncConfirmWipeReq,
+) -> Result<String, AppError> {
+    let phrase = req.phrase.trim();
+    if phrase != "CLEAR" {
+        return Err(AppError::Validation(
+            "CONFIRM_PHRASE_MISMATCH: expected CLEAR".to_string(),
+        ));
+    }
+
+    let (pending, device_id, bucket, endpoint, access_key, secret_key) = {
+        let conn = pool_ref
+            .0
+            .lock()
+            .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+        let pending = get_pending_wipe_info(&conn)?.ok_or_else(|| {
+            AppError::Validation("NO_PENDING_WIPE: there is no pending wipe to confirm".to_string())
+        })?;
+        if pending.wipe_id != req.wipe_id {
+            return Err(AppError::Validation("WIPE_ID_MISMATCH".to_string()));
+        }
+        let device_id = get_config_value(&conn, "device_id")?;
+        let bucket = get_config_value(&conn, "s3_bucket")?;
+        let endpoint = get_config_value(&conn, "s3_endpoint").ok();
+        let access_key = get_config_value(&conn, "s3_access_key")?;
+        let secret_key = get_config_value(&conn, "s3_secret_key")?;
+        (pending, device_id, bucket, endpoint, access_key, secret_key)
+    };
+
+    // Download and apply the specific delta that contains wipe intent.
+    let s3_client = if let Some(endpoint_url) = endpoint.clone() {
+        S3SyncClient::new_with_endpoint(
+            bucket.clone(),
+            device_id.clone(),
+            endpoint_url,
+            access_key.clone(),
+            secret_key.clone(),
+        )
+        .await
+        .map_err(|e| AppError::Db(format!("S3 client error: {}", e)))?
+    } else {
+        S3SyncClient::new(bucket.clone(), device_id.clone())
+            .await
+            .map_err(|e| AppError::Db(format!("S3 client error: {}", e)))?
+    };
+
+    let delta_data = s3_client.download(&pending.delta_key).await.map_err(|e| {
+        log::error!("S3 download error for {}: {:?}", pending.delta_key, e);
+        map_s3_error("download", e)
+    })?;
+    let delta = Delta::decompress(&delta_data)?;
+    if let Some((wipe_id, _created_at)) = extract_wipe_intent(&delta) {
+        if wipe_id != pending.wipe_id {
+            return Err(AppError::Validation("WIPE_ID_MISMATCH".to_string()));
+        }
+    } else {
+        return Err(AppError::Sync(
+            "Pending wipe delta does not contain WIPE_INTENT".to_string(),
+        ));
+    }
+
+    let delta_engine = DeltaSyncEngine::new(pool_ref, device_id.clone());
+    let before_apply_sync_meta_id = delta_engine.current_max_sync_metadata_id()?;
+    delta_engine.apply_delta(&delta)?;
+    let _marked = delta_engine.mark_remote_applied_operations_synced(
+        before_apply_sync_meta_id,
+        &delta.operations,
+    )?;
+
+    {
+        let conn = pool_ref
+            .0
+            .lock()
+            .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+        set_remote_delta_cursor_timestamp(&conn, &pending.source_device_id, pending.source_timestamp)?;
+        clear_pending_wipe(&conn)?;
+    }
+
+    // Continue with a normal full sync now that wipe has been applied and cursor advanced.
+    sync_full_pipeline(pool_ref, device_id, bucket, endpoint, access_key, secret_key).await
+}
+
 /// Perform full sync (upload + download)
 #[tauri::command]
 pub async fn cmd_sync_full(
@@ -693,6 +833,12 @@ async fn sync_full_impl(pool_ref: &DbPool) -> Result<String, AppError> {
                 .0
                 .lock()
                 .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+
+            // Block early if a wipe is pending confirmation.
+            if let Some(pending) = get_pending_wipe_info(&conn)? {
+                return Err(AppError::SyncWipeConfirmRequired(pending));
+            }
+
             let device_id = get_config_value(&conn, "device_id")?;
             let bucket = get_config_value(&conn, "s3_bucket")?;
             let endpoint = get_config_value(&conn, "s3_endpoint").ok();
@@ -757,6 +903,17 @@ async fn sync_full_pipeline(
 ) -> Result<String, AppError> {
     let res: Result<String, AppError> = (async {
         log::info!("Starting full sync...");
+
+        // Block all sync if a remote wipe is pending confirmation on this device.
+        {
+            let conn = pool_ref
+                .0
+                .lock()
+                .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+            if let Some(pending) = get_pending_wipe_info(&conn)? {
+                return Err(AppError::SyncWipeConfirmRequired(pending));
+            }
+        }
 
         // Create S3 client
         let s3_client = if let Some(endpoint_url) = endpoint {
@@ -917,6 +1074,25 @@ async fn sync_full_pipeline(
                     "Checksum mismatch for remote delta {}",
                     remote.key
                 )));
+            }
+
+            // If this delta contains a wipe intent, persist it and block applying until user confirms.
+            if let Some((wipe_id, created_at)) = extract_wipe_intent(&delta) {
+                let pending = PendingWipeInfo {
+                    wipe_id,
+                    source_device_id: remote.source_device_id.clone(),
+                    delta_key: remote.key.clone(),
+                    source_timestamp: remote.timestamp,
+                    created_at,
+                };
+                {
+                    let conn = pool_ref
+                        .0
+                        .lock()
+                        .map_err(|e: std::sync::PoisonError<_>| AppError::Db(e.to_string()))?;
+                    set_pending_wipe_info(&conn, &pending)?;
+                }
+                return Err(AppError::SyncWipeConfirmRequired(pending));
             }
 
             let before_apply_sync_meta_id = delta_engine.current_max_sync_metadata_id()?;
@@ -1178,6 +1354,55 @@ fn get_optional_config_value(conn: &Connection, key: &str) -> Result<Option<Stri
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(AppError::Db(e.to_string())),
     }
+}
+
+fn get_pending_wipe_info(conn: &Connection) -> Result<Option<PendingWipeInfo>, AppError> {
+    let raw = get_optional_config_value(conn, PENDING_WIPE_KEY)?;
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let parsed: PendingWipeInfo = serde_json::from_str(raw.trim()).map_err(|e| {
+        AppError::Db(format!(
+            "Invalid pending_wipe JSON in sync_config (key={}): {}",
+            PENDING_WIPE_KEY, e
+        ))
+    })?;
+    Ok(Some(parsed))
+}
+
+fn set_pending_wipe_info(conn: &Connection, info: &PendingWipeInfo) -> Result<(), AppError> {
+    let json = serde_json::to_string(info).map_err(|e| AppError::Db(e.to_string()))?;
+    set_config_value(conn, PENDING_WIPE_KEY, &json)
+}
+
+fn clear_pending_wipe(conn: &Connection) -> Result<(), AppError> {
+    conn.execute("DELETE FROM sync_config WHERE key = ?1", [PENDING_WIPE_KEY])
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    Ok(())
+}
+
+fn extract_wipe_intent(delta: &Delta) -> Option<(String, String)> {
+    for op in &delta.operations {
+        if op.table_name != "_control" {
+            continue;
+        }
+        let data = op.data.as_ref()?;
+        if data.get("type")?.as_str()? != "WIPE_INTENT" {
+            continue;
+        }
+        let wipe_id = data
+            .get("wipe_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or(op.record_id.as_str())
+            .to_string();
+        let created_at = data
+            .get("created_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or(delta.created_at.as_str())
+            .to_string();
+        return Some((wipe_id, created_at));
+    }
+    None
 }
 
 fn parse_remote_delta_object(key: &str) -> Option<RemoteDeltaObject> {
@@ -1468,8 +1693,8 @@ fn mask_credential(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_remote_delta_object, select_latest_snapshot};
-    use crate::sync::S3ObjectSummary;
+    use super::{extract_wipe_intent, parse_remote_delta_object, select_latest_snapshot};
+    use crate::sync::{Delta, Operation, OperationType, S3ObjectSummary, VectorClock};
 
     #[test]
     fn parse_remote_delta_object_supports_legacy_key() {
@@ -1516,5 +1741,130 @@ mod tests {
         let latest = select_latest_snapshot(&snapshots).expect("should pick one snapshot");
         assert_eq!(latest.key, "snapshots/latest-c.gz");
         assert_eq!(latest.last_modified_unix, Some(101));
+    }
+
+    // ── extract_wipe_intent ────────────────────────────────────────────────────
+
+    fn make_delta(operations: Vec<Operation>) -> Delta {
+        let checksum = Delta::calculate_checksum(&operations);
+        Delta {
+            id: 1,
+            operations,
+            device_id: "test-device".to_string(),
+            vector_clock: VectorClock::new("test-device".to_string()),
+            created_at: "2026-03-03T00:00:00Z".to_string(),
+            checksum,
+        }
+    }
+
+    fn make_wipe_op(wipe_id: &str) -> Operation {
+        Operation {
+            table_name: "_control".to_string(),
+            record_id: wipe_id.to_string(),
+            op_type: OperationType::Insert,
+            data: Some(serde_json::json!({
+                "type": "WIPE_INTENT",
+                "wipe_id": wipe_id,
+                "created_at": "2026-03-03T00:00:00Z",
+                "reason": "user_initiated"
+            })),
+            version: 1,
+        }
+    }
+
+    #[test]
+    fn extract_wipe_intent_returns_none_when_absent() {
+        let delta = make_delta(vec![Operation {
+            table_name: "persons".to_string(),
+            record_id: "p1".to_string(),
+            op_type: OperationType::Delete,
+            data: None,
+            version: 1,
+        }]);
+        assert!(extract_wipe_intent(&delta).is_none());
+    }
+
+    #[test]
+    fn extract_wipe_intent_returns_none_for_empty_delta() {
+        let delta = make_delta(vec![]);
+        assert!(extract_wipe_intent(&delta).is_none());
+    }
+
+    #[test]
+    fn extract_wipe_intent_parses_control_op() {
+        let wipe_id = "wipe-abc-123";
+        let delta = make_delta(vec![make_wipe_op(wipe_id)]);
+        let result = extract_wipe_intent(&delta).expect("should extract wipe intent");
+        assert_eq!(result.0, wipe_id);
+        assert_eq!(result.1, "2026-03-03T00:00:00Z");
+    }
+
+    #[test]
+    fn extract_wipe_intent_found_when_wipe_op_is_first() {
+        // The _control op must come first because the `?` on data.as_ref() short-circuits
+        // the whole function when it encounters an op with data=None.
+        let wipe_id = "wipe-mixed";
+        let delta = make_delta(vec![
+            make_wipe_op(wipe_id),
+            Operation {
+                table_name: "projects".to_string(),
+                record_id: "proj1".to_string(),
+                op_type: OperationType::Delete,
+                data: Some(serde_json::json!({"id": "proj1"})),
+                version: 1,
+            },
+        ]);
+        let result = extract_wipe_intent(&delta).expect("should find wipe intent when first op");
+        assert_eq!(result.0, wipe_id);
+    }
+
+    #[test]
+    fn extract_wipe_intent_falls_back_to_record_id_when_wipe_id_missing() {
+        // data exists but lacks "wipe_id" field → fallback to op.record_id
+        let delta = make_delta(vec![Operation {
+            table_name: "_control".to_string(),
+            record_id: "fallback-record-id".to_string(),
+            op_type: OperationType::Insert,
+            data: Some(serde_json::json!({
+                "type": "WIPE_INTENT",
+                "created_at": "2026-03-03T00:00:00Z"
+                // no "wipe_id" key
+            })),
+            version: 1,
+        }]);
+        let result = extract_wipe_intent(&delta).expect("should fallback to record_id");
+        assert_eq!(result.0, "fallback-record-id");
+    }
+
+    #[test]
+    fn extract_wipe_intent_ignores_non_wipe_control_ops() {
+        // _control table but type != WIPE_INTENT
+        let delta = make_delta(vec![Operation {
+            table_name: "_control".to_string(),
+            record_id: "ctrl-1".to_string(),
+            op_type: OperationType::Insert,
+            data: Some(serde_json::json!({
+                "type": "SOME_OTHER_CONTROL",
+                "wipe_id": "should-not-match"
+            })),
+            version: 1,
+        }]);
+        assert!(extract_wipe_intent(&delta).is_none());
+    }
+
+    #[test]
+    fn extract_wipe_intent_ignores_non_control_table_with_wipe_data() {
+        // data has WIPE_INTENT but table_name is not _control
+        let delta = make_delta(vec![Operation {
+            table_name: "persons".to_string(),
+            record_id: "p1".to_string(),
+            op_type: OperationType::Insert,
+            data: Some(serde_json::json!({
+                "type": "WIPE_INTENT",
+                "wipe_id": "should-not-match"
+            })),
+            version: 1,
+        }]);
+        assert!(extract_wipe_intent(&delta).is_none());
     }
 }

@@ -34,6 +34,14 @@ export class SyncManager {
     // Initialization
   }
 
+  private emitSyncConfigChanged(): void {
+    try {
+      window.dispatchEvent(new CustomEvent('projex:sync-config-changed'));
+    } catch {
+      // ignore
+    }
+  }
+
   /**
    * 初始化同步管理器
    */
@@ -71,6 +79,7 @@ export class SyncManager {
   async setEnabled(enabled: boolean): Promise<void> {
     await syncApi.setEnabled(enabled);
     await this.initialize();
+    this.emitSyncConfigChanged();
   }
 
   async revealSecretKey(): Promise<string> {
@@ -116,6 +125,7 @@ export class SyncManager {
 
     // 重新初始化
     await this.initialize();
+    this.emitSyncConfigChanged();
   }
 
   /**

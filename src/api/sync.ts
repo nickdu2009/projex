@@ -35,6 +35,14 @@ export interface SyncTestConnectionReq {
   secret_key?: string;
 }
 
+export interface PendingWipeInfo {
+  wipeId: string;
+  sourceDeviceId: string;
+  deltaKey: string;
+  sourceTimestamp: number;
+  createdAt: string;
+}
+
 export const syncApi = {
   async getConfig(): Promise<SyncConfigDto> {
     return await invoke<SyncConfigDto>('cmd_sync_get_config');
@@ -61,6 +69,18 @@ export const syncApi = {
 
   async getStatus(): Promise<SyncStatusDto> {
     return await invoke<SyncStatusDto>('cmd_sync_get_status');
+  },
+
+  async getPendingWipe(): Promise<PendingWipeInfo | null> {
+    return await invoke<PendingWipeInfo | null>('cmd_sync_get_pending_wipe');
+  },
+
+  async confirmWipe(wipeId: string, phrase: string): Promise<string> {
+    return await invoke<string>('cmd_sync_confirm_wipe', { req: { wipeId, phrase } });
+  },
+
+  async rejectWipe(wipeId: string): Promise<string> {
+    return await invoke<string>('cmd_sync_reject_wipe', { req: { wipeId } });
   },
 
   async syncFull(): Promise<string> {

@@ -113,6 +113,19 @@ pub struct ImportResult {
     pub skipped_duplicates: usize,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WipeResult {
+    pub wipe_id: String,
+    pub deleted_project_comments: usize,
+    pub deleted_status_history: usize,
+    pub deleted_assignments: usize,
+    pub deleted_project_tags: usize,
+    pub deleted_projects: usize,
+    pub deleted_persons: usize,
+    pub deleted_partners: usize,
+}
+
 /// Export all data as JSON string
 pub fn export_json_string(pool: &DbPool, _schema_version: Option<i32>) -> Result<String, AppError> {
     let schema_version = 3; // Current schema version (projects.productName added)
@@ -401,6 +414,92 @@ pub fn import_json_string(pool: &DbPool, json: &str) -> Result<ImportResult, App
         status_history: history_count,
         comments: comments_count,
         skipped_duplicates: skipped,
+    })
+}
+
+/// Wipe all business data (but keep sync tables/config/migrations).
+///
+/// Safety:
+/// - Requires `sync_enabled=1` so the wipe can be propagated as deltas.
+/// - Inserts a special `WIPE_INTENT` control operation into `sync_metadata` before deleting,
+///   so other clients can block and ask for confirmation before applying.
+pub fn wipe_business_data(pool: &DbPool) -> Result<WipeResult, AppError> {
+    let conn = get_connection(pool);
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Db(e.to_string()))?;
+
+    let sync_enabled: String = tx
+        .query_row(
+            "SELECT value FROM sync_config WHERE key = 'sync_enabled'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_else(|_| "0".to_string());
+    if sync_enabled.trim() != "1" {
+        return Err(AppError::Validation(
+            "SYNC_DISABLED: enable sync before wiping to propagate changes".to_string(),
+        ));
+    }
+
+    let device_id: String = tx
+        .query_row(
+            "SELECT value FROM sync_config WHERE key = 'device_id'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| AppError::Db(e.to_string()))?;
+
+    let wipe_id = Uuid::new_v4().to_string();
+    let created_at = Utc::now().to_rfc3339();
+    let intent = serde_json::json!({
+        "type": "WIPE_INTENT",
+        "wipe_id": wipe_id,
+        "created_at": created_at,
+        "reason": "user_initiated"
+    });
+
+    tx.execute(
+        "INSERT INTO sync_metadata (table_name, record_id, operation, data_snapshot, device_id, version, created_at, synced)
+         VALUES (?1, ?2, 'INSERT', ?3, ?4, 1, datetime('now'), 0)",
+        params!["_control", intent["wipe_id"].as_str().unwrap(), intent.to_string(), device_id],
+    )
+    .map_err(|e| AppError::Db(e.to_string()))?;
+
+    // Delete in FK-safe order.
+    let deleted_project_comments = tx
+        .execute("DELETE FROM project_comments", [])
+        .map_err(|e| AppError::Db(e.to_string()))? as usize;
+    let deleted_status_history = tx
+        .execute("DELETE FROM status_history", [])
+        .map_err(|e| AppError::Db(e.to_string()))? as usize;
+    let deleted_assignments = tx
+        .execute("DELETE FROM assignments", [])
+        .map_err(|e| AppError::Db(e.to_string()))? as usize;
+    let deleted_project_tags = tx
+        .execute("DELETE FROM project_tags", [])
+        .map_err(|e| AppError::Db(e.to_string()))? as usize;
+    let deleted_projects = tx
+        .execute("DELETE FROM projects", [])
+        .map_err(|e| AppError::Db(e.to_string()))? as usize;
+    let deleted_persons = tx
+        .execute("DELETE FROM persons", [])
+        .map_err(|e| AppError::Db(e.to_string()))? as usize;
+    let deleted_partners = tx
+        .execute("DELETE FROM partners", [])
+        .map_err(|e| AppError::Db(e.to_string()))? as usize;
+
+    tx.commit().map_err(|e| AppError::Db(e.to_string()))?;
+
+    Ok(WipeResult {
+        wipe_id: intent["wipe_id"].as_str().unwrap().to_string(),
+        deleted_project_comments,
+        deleted_status_history,
+        deleted_assignments,
+        deleted_project_tags,
+        deleted_projects,
+        deleted_persons,
+        deleted_partners,
     })
 }
 
