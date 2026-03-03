@@ -255,5 +255,5 @@ if [ "$SKIP_GH" = "1" ]; then
 else
     echo -e "   1. Push a version tag:"
 fi
-echo -e "      ${CYAN}git tag v1.0.5 && git push origin v1.0.5${RESET}"
+echo -e "      ${CYAN}git tag vX.Y.Z && git push origin vX.Y.Z${RESET}"
 echo ""
